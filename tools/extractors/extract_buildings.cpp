@@ -1,9 +1,11 @@
 #include "framework/data.h"
 #include "framework/framework.h"
-#include "game/state/battle/battlemap.h"
 #include "game/state/city/building.h"
 #include "game/state/city/city.h"
+#include "game/state/city/vehicle.h"
 #include "game/state/gamestate.h"
+#include "game/state/rules/battle/battlemap.h"
+#include "game/state/rules/city/ufopaedia.h"
 #include "library/strings_format.h"
 #include "tools/extractors/common/ufo2p.h"
 #include "tools/extractors/extractors.h"
@@ -28,6 +30,8 @@ void InitialGameStateExtractor::extractBuildingFunctions(GameState &state) const
 			f->detectionWeight = buildingFunctionDetectionWeights[i];
 		}
 		auto id = format("%s%s", BuildingFunction::getPrefix(), canon_string(f->name));
+		auto ped = format("%s%s", UfopaediaEntry::getPrefix(), canon_string(f->name));
+		f->ufopaedia_entry = {&state, ped};
 		state.building_functions[id] = f;
 	}
 }
@@ -62,6 +66,17 @@ void InitialGameStateExtractor::extractBuildings(GameState &state, UString bldFi
 			               format("%s%s", BuildingFunction::getPrefix(), canon_string(b->name))};
 			LogInfo("Alien bld %d %s func %d %s", entry.name_idx, b->name, entry.function_idx,
 			        b->function.id);
+
+			b->accessTopic = {&state, format("RESEARCH_UNLOCK_ALIEN_BUILDING_%d", i)};
+			if (i < 9)
+			{
+				b->researchUnlock.emplace_back(&state,
+				                               format("RESEARCH_UNLOCK_ALIEN_BUILDING_%d", i + 1));
+			}
+			else
+			{
+				b->victory = true;
+			}
 
 			// Load crew
 			auto crew = ufo2p.crew_alien_building->get(entry.function_idx);
@@ -121,7 +136,7 @@ void InitialGameStateExtractor::extractBuildings(GameState &state, UString bldFi
 		// Shift position by 20 tiles
 		b->bounds = {entry.x0 + 20, entry.y0 + 20, entry.x1 + 21, entry.y1 + 21};
 		auto id = format("%s%s", Building::getPrefix(), canon_string(b->name));
-
+		b->city = {&state, city->id};
 		city->buildings[id] = b;
 	}
 }

@@ -109,6 +109,13 @@ UFO2P::UFO2P(std::string file_name)
 	this->facility_data.reset(
 	    new DataChunk<FacilityData>(file, FACILITY_DATA_OFFSET_START, FACILITY_DATA_OFFSET_END));
 
+	this->economy_data1.reset(
+	    new DataChunk<EconomyData>(file, ECONOMY_DATA1_OFFSET_START, ECONOMY_DATA1_OFFSET_END));
+	this->economy_data2.reset(
+	    new DataChunk<EconomyData>(file, ECONOMY_DATA2_OFFSET_START, ECONOMY_DATA2_OFFSET_END));
+	this->economy_data3.reset(
+	    new DataChunk<EconomyData>(file, ECONOMY_DATA3_OFFSET_START, ECONOMY_DATA3_OFFSET_END));
+
 	this->scenery_minimap_colour.reset(new DataChunk<SceneryMinimapColour>(
 	    file, SCENERY_MINIMAP_COLOUR_DATA_OFFSET_START, SCENERY_MINIMAP_COLOUR_DATA_OFFSET_END));
 
@@ -127,6 +134,10 @@ UFO2P::UFO2P(std::string file_name)
 	this->infiltration_speed_org.reset(
 	    new DataChunk<OrgInfiltrationSpeed>(file, ORGANISATION_INFILTRATION_SPEED_OFFSET_START,
 	                                        ORGANISATION_INFILTRATION_SPEED_OFFSET_END));
+	this->vehicle_park.reset(
+	    new DataChunk<OrgVehicleParkData>(file, ORGANISATION_VEHICLE_PARK_DATA_OFFSET_START,
+	                                      ORGANISATION_VEHICLE_PARK_DATA_OFFSET_END));
+
 	this->infiltration_speed_agent.reset(new DataChunk<AgentInfiltrationSpeed>(
 	    file, AGENT_INFILTRATION_SPEED_OFFSET_START, AGENT_INFILTRATION_SPEED_OFFSET_END));
 	this->infiltration_speed_building.reset(new DataChunk<BuildingInfiltrationSpeed>(

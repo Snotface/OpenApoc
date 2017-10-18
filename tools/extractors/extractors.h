@@ -1,7 +1,7 @@
 #pragma once
 
-#include "game/state/battle/battlemappart_type.h"
-#include "game/state/battle/battleunitanimationpack.h"
+#include "game/state/rules/battle/battlemapparttype.h"
+#include "game/state/rules/battle/battleunitanimationpack.h"
 #include "library/sp.h"
 #include "library/strings.h"
 #include "library/vec.h"
@@ -84,6 +84,8 @@ class InitialGameStateExtractor
 	static const std::map<OpenApoc::UString, OpenApoc::UString> unitAnimationPackPaths;
 	// Detection weights for building functions
 	static const std::vector<int> buildingFunctionDetectionWeights;
+	// Lookup value for tube NESW orientation
+	static const std::map<OpenApoc::UString, std::vector<int>> tubes;
 
   private:
 	// 'common' state doesn't rely on difficulty
@@ -97,6 +99,7 @@ class InitialGameStateExtractor
 	void extractResearch(GameState &state) const;
 	void extractAgentEquipment(GameState &state) const;
 	void extractDoodads(GameState &state) const;
+	void extractEconomy(GameState &state) const;
 
 	void extractBattlescapeMap(GameState &state, const std::vector<OpenApoc::UString> &paths) const;
 	void extractBattlescapeMapFromPath(GameState &state, const UString dirName,
@@ -105,6 +108,8 @@ class InitialGameStateExtractor
 	                        BattleMapPartType::Type type, const UString &idPrefix,
 	                        const UString &mapName, const UString &dirName, const UString &datName,
 	                        const UString &pckName, const UString &stratPckName) const;
+
+	void extractSharedCityResources(GameState &state) const;
 
 	void extractSharedBattleResources(GameState &state) const;
 

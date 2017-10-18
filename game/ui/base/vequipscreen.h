@@ -1,7 +1,7 @@
 #pragma once
 
 #include "framework/stage.h"
-#include "game/state/rules/vequipment_type.h"
+#include "game/state/rules/city/vequipmenttype.h"
 #include "game/state/stateobject.h"
 #include "library/colour.h"
 #include "library/rect.h"
@@ -51,6 +51,9 @@ class VEquipScreen : public Stage
 	std::map<sp<Control>, sp<Vehicle>> vehicleSelectionControls;
 
 	sp<GameState> state;
+
+	bool modifierLShift = false;
+	bool modifierRShift = false;
 
   public:
 	VEquipScreen(sp<GameState> state);

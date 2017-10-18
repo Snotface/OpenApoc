@@ -3,7 +3,7 @@
 #include "forms/graphic.h"
 #include "forms/graphicbutton.h"
 #include "forms/label.h"
-#include "forms/list.h"
+#include "forms/listbox.h"
 #include "forms/scrollbar.h"
 #include "forms/ui.h"
 #include "framework/data.h"
@@ -11,10 +11,12 @@
 #include "framework/font.h"
 #include "framework/framework.h"
 #include "framework/keycodes.h"
-#include "game/state/base/base.h"
-#include "game/state/base/facility.h"
+#include "game/state/city/base.h"
+#include "game/state/city/building.h"
+#include "game/state/city/facility.h"
 #include "game/state/gamestate.h"
 #include "game/ui/base/researchselect.h"
+#include "game/ui/components/controlgenerator.h"
 #include "library/strings_format.h"
 
 namespace OpenApoc
@@ -35,8 +37,10 @@ void ResearchScreen::changeBase(sp<Base> newBase)
 {
 	BaseStage::changeBase(newBase);
 
-	// FIXME: Should only reset if selected_lab doesn't belong to current base
-	this->selected_lab = nullptr;
+	// first lab in case we have no selected lab
+	sp<Facility> firstLab;
+	// wether selected lab is in new list
+	bool labInList = false;
 	this->labs.clear();
 	for (auto &facility : this->state->current_base->facilities)
 	{
@@ -46,12 +50,25 @@ void ResearchScreen::changeBase(sp<Base> newBase)
 		     facility->type->capacityType == FacilityType::Capacity::Workshop))
 		{
 			this->labs.push_back(facility);
+			if (!firstLab)
+			{
+				firstLab = facility;
+			}
 			if (!this->selected_lab)
 			{
 				this->selected_lab = facility;
 				this->viewFacility = this->selected_lab;
 			}
+			if (selected_lab == facility)
+			{
+				labInList = true;
+			}
 		}
+	}
+	if (!labInList && firstLab)
+	{
+		this->selected_lab = firstLab;
+		this->viewFacility = firstLab;
 	}
 
 	auto labList = form->findControlTyped<ListBox>("LIST_LABS");
@@ -62,6 +79,10 @@ void ResearchScreen::changeBase(sp<Base> newBase)
 		graphic->AutoSize = true;
 		graphic->setData(facility);
 		labList->addItem(graphic);
+		if (facility == selected_lab)
+		{
+			labList->setSelected(graphic);
+		}
 	}
 
 	setCurrentLabInfo();
@@ -69,18 +90,10 @@ void ResearchScreen::changeBase(sp<Base> newBase)
 
 void ResearchScreen::begin()
 {
-	auto img = mksp<RGBImage>(Vec2<int>{1, 2});
-	{
-		RGBImageLock l(img);
-		l.set({0, 0}, Colour{255, 255, 219});
-		l.set({0, 1}, Colour{215, 0, 0});
-	}
-	this->healthImage = img;
-
 	BaseStage::begin();
 
 	auto unassignedAgentList = form->findControlTyped<ListBox>("LIST_UNASSIGNED");
-	unassignedAgentList->addCallback(FormEventType::ListBoxChangeSelected, [this](Event *e) {
+	unassignedAgentList->addCallback(FormEventType::ListBoxChangeSelected, [this](FormsEvent *e) {
 		LogWarning("unassigned agent selected");
 		if (this->assigned_agent_count >= this->selected_lab->type->capacityAmount)
 		{
@@ -103,7 +116,7 @@ void ResearchScreen::begin()
 		this->selected_lab->lab->assigned_agents.push_back({state.get(), agent});
 		this->setCurrentLabInfo();
 	});
-	auto removeFn = [this](Event *e) {
+	auto removeFn = [this](FormsEvent *e) {
 		LogWarning("assigned agent selected");
 		auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
 		auto agent = list->getSelectedData<Agent>();
@@ -219,7 +232,8 @@ void ResearchScreen::render()
 	{
 		this->selected_lab = labList->getSelectedData<Facility>();
 		this->viewFacility = this->selected_lab;
-		this->current_topic = this->selected_lab->lab->current_project;
+		this->current_topic =
+		    this->selected_lab ? this->selected_lab->lab->current_project : nullptr;
 		this->setCurrentLabInfo();
 		this->refreshView();
 	}
@@ -241,6 +255,7 @@ void ResearchScreen::setCurrentLabInfo()
 		form->findControlTyped<Label>("TEXT_LAB_TYPE")->setText("");
 		auto totalSkillLabel = form->findControlTyped<Label>("TEXT_TOTAL_SKILL");
 		totalSkillLabel->setText(format(tr("Total Skill: %d"), 0));
+		updateProgressInfo();
 		return;
 	}
 	this->assigned_agent_count = 0;
@@ -270,8 +285,7 @@ void ResearchScreen::setCurrentLabInfo()
 
 	form->findControlTyped<Label>("TEXT_LAB_TYPE")->setText(labTypeName);
 
-	auto font = ui().getFont("smalfont");
-	auto agentEntryHeight = font->getFontHeight() * 3;
+	auto agentEntryHeight = ControlGenerator::getFontHeight(*state) * 3;
 
 	auto unassignedAgentList = form->findControlTyped<ListBox>("LIST_UNASSIGNED");
 	unassignedAgentList->clear();
@@ -280,7 +294,7 @@ void ResearchScreen::setCurrentLabInfo()
 	for (auto &agent : state->agents)
 	{
 		bool assigned_to_current_lab = false;
-		if (agent.second->home_base != this->state->current_base)
+		if (agent.second->homeBuilding->base != this->state->current_base)
 			continue;
 
 		if (agent.second->type->role != listedAgentType)
@@ -306,16 +320,15 @@ void ResearchScreen::setCurrentLabInfo()
 			if (!assigned_to_current_lab)
 				continue;
 		}
-		auto agentControl =
-		    this->createAgentControl({130, agentEntryHeight}, {state.get(), agent.second});
-
 		if (assigned_to_current_lab)
 		{
-			assignedAgentList->addItem(agentControl);
+			assignedAgentList->addItem(ControlGenerator::createLargeAgentControl(
+			    *state, agent.second, true, UnitSelectionState::NA, false, true));
 		}
 		else
 		{
-			unassignedAgentList->addItem(agentControl);
+			unassignedAgentList->addItem(ControlGenerator::createLargeAgentControl(
+			    *state, agent.second, true, UnitSelectionState::NA, false, false));
 		}
 	}
 	assignedAgentList->ItemSize = agentEntryHeight;
@@ -330,7 +343,7 @@ void ResearchScreen::setCurrentLabInfo()
 
 void ResearchScreen::updateProgressInfo()
 {
-	if (this->selected_lab->lab->current_project)
+	if (this->selected_lab && this->selected_lab->lab->current_project)
 	{
 		auto &topic = this->selected_lab->lab->current_project;
 		auto progressBar = form->findControlTyped<Graphic>("GRAPHIC_PROGRESS_BAR");
@@ -384,6 +397,8 @@ void ResearchScreen::updateProgressInfo()
 		auto completionPercent = form->findControlTyped<Label>("TEXT_PROJECT_COMPLETION");
 		completionPercent->setText("");
 	}
+	auto manufacture_bg = form->findControlTyped<Graphic>("MANUFACTURE_BG");
+
 	auto manufacturing_scrollbar = form->findControlTyped<ScrollBar>("MANUFACTURE_QUANTITY_SLIDER");
 	auto manufacturing_scroll_left =
 	    form->findControlTyped<GraphicButton>("MANUFACTURE_QUANTITY_DOWN");
@@ -391,9 +406,10 @@ void ResearchScreen::updateProgressInfo()
 	    form->findControlTyped<GraphicButton>("MANUFACTURE_QUANTITY_UP");
 	auto manufacturing_quantity = form->findControlTyped<Label>("TEXT_QUANTITY");
 	auto manufacturing_ntomake = form->findControlTyped<Label>("TEXT_NUMBER_TO_MAKE");
-	if (this->selected_lab->lab->current_project &&
+	if (this->selected_lab && this->selected_lab->lab->current_project &&
 	    this->selected_lab->lab->current_project->type == ResearchTopic::Type::Engineering)
 	{
+		manufacture_bg->setVisible(true);
 		manufacturing_ntomake->setVisible(true);
 		manufacturing_quantity->setVisible(true);
 		manufacturing_scrollbar->setVisible(true);
@@ -404,78 +420,13 @@ void ResearchScreen::updateProgressInfo()
 	}
 	else
 	{
+		manufacture_bg->setVisible(false);
 		manufacturing_ntomake->setVisible(false);
 		manufacturing_quantity->setVisible(false);
 		manufacturing_scrollbar->setVisible(false);
 		manufacturing_scroll_left->setVisible(false);
 		manufacturing_scroll_right->setVisible(false);
 	}
-}
-
-// FIXME: Put this in the rules somewhere?
-// FIXME: This could be shared with the citview ICON_RESOURCES?
-static const UString agentFramePath =
-    "PCK:xcom3/ufodata/vs_icon.pck:xcom3/ufodata/vs_icon.tab:37:xcom3/ufodata/pal_01.dat";
-
-sp<Control> ResearchScreen::createAgentControl(Vec2<int> size, StateRef<Agent> agent)
-{
-	auto baseControl = mksp<Control>();
-	baseControl->setData(agent.getSp());
-	baseControl->Name = "AGENT_PORTRAIT";
-	baseControl->Size = size;
-
-	auto frameGraphic = baseControl->createChild<Graphic>(fw().data->loadImage(agentFramePath));
-	frameGraphic->AutoSize = true;
-	frameGraphic->Location = {5, 5};
-	auto photoGraphic = frameGraphic->createChild<Graphic>(agent->getPortrait().icon);
-	photoGraphic->AutoSize = true;
-	photoGraphic->Location = {1, 1};
-
-	auto healthGraphic = frameGraphic->createChild<Graphic>(this->healthImage);
-	// FIXME: Put these somewhere slightly less magic?
-	// FIXME: Also shared between CityView?
-	Vec2<int> healthBarOffset = {27, 2};
-	Vec2<int> healthBarSize = {3, 20};
-	// This is a bit annoying as the health bar starts at the bottom, but the coord origin is
-	// top-left, so fix that up a bit
-	float healthProportion =
-	    (float)agent->current_stats.health / (float)agent->initial_stats.health;
-	int healthBarHeight = (float)healthBarSize.y * healthProportion;
-	healthBarOffset.y = healthBarOffset.y + (healthBarSize.y - healthBarHeight);
-	healthBarSize.y = healthBarHeight;
-	healthGraphic->Location = healthBarOffset;
-	healthGraphic->Size = healthBarSize;
-	healthGraphic->ImagePosition = FillMethod::Stretch;
-
-	auto font = ui().getFont("smalfont");
-
-	auto nameLabel = baseControl->createChild<Label>(agent->name, font);
-	nameLabel->Location = {40, 0};
-	nameLabel->Size = {100, font->getFontHeight() * 2};
-
-	int skill = 0;
-	if (agent->type->role == AgentType::Role::Physicist)
-	{
-		skill = agent->current_stats.physics_skill;
-	}
-	else if (agent->type->role == AgentType::Role::BioChemist)
-	{
-		skill = agent->current_stats.biochem_skill;
-	}
-	else if (agent->type->role == AgentType::Role::Engineer)
-	{
-		skill = agent->current_stats.engineering_skill;
-	}
-	else
-	{
-		LogError("Trying to show non-scientist agent %s (%s)", agent.id, agent->name);
-	}
-
-	auto skillLabel = baseControl->createChild<Label>(format(tr("Skill %s"), skill), font);
-	skillLabel->Size = {100, font->getFontHeight()};
-	skillLabel->Location = {40, font->getFontHeight() * 2};
-
-	return baseControl;
 }
 
 }; // namespace OpenApoc

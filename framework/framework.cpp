@@ -89,6 +89,170 @@ ConfigOptionInt frameLimit("Framework", "FrameLimit", "Quit after this many fram
 ConfigOptionInt swapInterval("Framework", "SwapInterval",
                              "Swap interval (0 = tear, 1 = wait for vsync", 0);
 
+ConfigOptionBool autoScrollOption("Options.Misc", "AutoScroll", "Enable scrolling with mouse",
+                                  true);
+ConfigOptionBool actionMusicOption("Options.Misc", "ActionMusic",
+                                   "Music changes according to action in battle", true);
+ConfigOptionBool autoExecuteOption("Options.Misc", "AutoExecute",
+                                   "Execute remaining orders when player presses end turn button",
+                                   false);
+ConfigOptionBool toolTipsOption("Options.Misc", "ToolTips",
+                                "Show tool tips when hovering over controls", true);
+
+;
+ConfigOptionBool optionPauseOnUfoSpotted("Notifications.City", "UfoSpotted", "UFO spotted", true);
+ConfigOptionBool optionPauseOnVehicleLightDamage("Notifications.City", "VehicleLightDamage",
+                                                 "Vehicle lightly damaged", true);
+ConfigOptionBool optionPauseOnVehicleModerateDamage("Notifications.City", "VehicleModerateDamage",
+                                                    "Vehicle moderately damaged", true);
+ConfigOptionBool optionPauseOnVehicleHeavyDamage("Notifications.City", "VehicleHeavyDamage",
+                                                 "Vehicle heavily damaged", true);
+ConfigOptionBool optionPauseOnVehicleDestroyed("Notifications.City", "VehicleDestroyed",
+                                               "Vehicle destroyed", true);
+ConfigOptionBool optionPauseOnVehicleEscaping("Notifications.City", "VehicleEscaping",
+                                              "Vehicle damaged and returning to base", true);
+ConfigOptionBool optionPauseOnVehicleNoAmmo("Notifications.City", "VehicleNoAmmo",
+                                            "Weapon out of ammo", true);
+ConfigOptionBool optionPauseOnVehicleLowFuel("Notifications.City", "VehicleLowFuel",
+                                             "Vehicle low on fuel", true);
+ConfigOptionBool optionPauseOnAgentDiedCity("Notifications.City", "AgentDiedCity", "Agent has died",
+                                            true);
+ConfigOptionBool optionPauseOnAgentArrived("Notifications.City", "AgentArrived",
+                                           "Agent arrived at base", true);
+ConfigOptionBool optionPauseOnCargoArrived("Notifications.City", "CargoArrived",
+                                           "Cargo has arrived at base", true);
+ConfigOptionBool optionPauseOnTransferArrived("Notifications.City", "TransferArrived",
+                                              "Transfer arrived at base", true);
+ConfigOptionBool optionPauseOnRecoveryArrived("Notifications.City", "RecoveryArrived",
+                                              "Crash recovery arrived at base", true);
+ConfigOptionBool optionPauseOnVehicleRepaired("Notifications.City", "VehicleRepaired",
+                                              "Vehicle repaired", true);
+ConfigOptionBool optionPauseOnVehicleRearmed("Notifications.City", "VehicleRearmed",
+                                             "Vehicle rearmed", true);
+ConfigOptionBool optionPauseOnNotEnoughAmmo("Notifications.City", "NotEnoughAmmo",
+                                            "Not enough ammo to rearm vehicle", true);
+ConfigOptionBool optionPauseOnVehicleRefuelled("Notifications.City", "VehicleRefuelled",
+                                               "Vehicle refuelled", true);
+ConfigOptionBool optionPauseOnNotEnoughFuel("Notifications.City", "NotEnoughFuel",
+                                            "Not enough fuel to refuel vehicle", true);
+ConfigOptionBool optionPauseOnUnauthorizedVehicle("Notifications.City", "UnauthorizedVehicle",
+                                                  "Unauthorized vehicle detected", true);
+ConfigOptionBool optionPauseOnHostileSpotted("Notifications.Battle", "HostileSpotted",
+                                             "Hostile unit spotted", true);
+ConfigOptionBool optionPauseOnHostileDied("Notifications.Battle", "HostileDied",
+                                          "Hostile unit has died", true);
+ConfigOptionBool optionPauseOnUnknownDied("Notifications.Battle", "UnknownDied",
+                                          "Unknown Unit has died", true);
+ConfigOptionBool optionPauseOnAgentDiedBattle("Notifications.Battle", "AgentDiedBattle",
+                                              "Unit has died", true);
+ConfigOptionBool optionPauseOnAgentBrainsucked("Notifications.Battle", "AgentBrainsucked",
+                                               "Unit Brainsucked", true);
+ConfigOptionBool optionPauseOnAgentCriticallyWounded("Notifications.Battle",
+                                                     "AgentCriticallyWounded",
+                                                     "Unit critically wounded", true);
+ConfigOptionBool optionPauseOnAgentBadlyInjured("Notifications.Battle", "AgentBadlyInjured",
+                                                "Unit badly injured", true);
+ConfigOptionBool optionPauseOnAgentInjured("Notifications.Battle", "AgentInjured", "Unit injured",
+                                           true);
+ConfigOptionBool optionPauseOnAgentUnderFire("Notifications.Battle", "AgentUnderFire",
+                                             "Unit under fire", true);
+ConfigOptionBool optionPauseOnAgentUnconscious("Notifications.Battle", "AgentUnconscious",
+                                               "Unit has lost consciousness", true);
+ConfigOptionBool optionPauseOnAgentLeftCombat("Notifications.Battle", "AgentLeftCombat",
+                                              "Unit has left combat zone", true);
+ConfigOptionBool optionPauseOnAgentFrozen("Notifications.Battle", "AgentFrozen", "Unit has frozen",
+                                          true);
+ConfigOptionBool optionPauseOnAgentBerserk("Notifications.Battle", "AgentBerserk",
+                                           "Unit has gone beserk", true);
+ConfigOptionBool optionPauseOnAgentPanicked("Notifications.Battle", "AgentPanicked",
+                                            "Unit has panicked", true);
+ConfigOptionBool optionPauseOnAgentPanicOver("Notifications.Battle", "AgentPanicOver",
+                                             "Unit has stopped panicking", true);
+ConfigOptionBool optionPauseOnAgentPsiAttacked("Notifications.Battle", "AgentPsiAttacked",
+                                               "Psionic attack on unit", true);
+ConfigOptionBool optionPauseOnAgentPsiControlled("Notifications.Battle", "AgentPsiControlled",
+                                                 "Unit under Psionic control", true);
+ConfigOptionBool optionPauseOnAgentPsiOver("Notifications.Battle", "AgentPsiOver",
+                                           "Unit freed from Psionic control", true);
+
+ConfigOptionBool optionUFODamageModel("OpenApoc.NewFeature", "UFODamageModel",
+                                      "X-Com 1 Damage model (0-200%)", false);
+ConfigOptionBool optionInstantExplosionDamage("OpenApoc.NewFeature", "InstantExplosionDamage",
+                                              "Explosions damage instantly", false);
+ConfigOptionBool optionGravliftSounds("OpenApoc.NewFeature", "GravliftSounds", "Gravlift sounds",
+                                      true);
+ConfigOptionBool optionNoInstantThrows("OpenApoc.NewFeature", "NoInstantThrows",
+                                       "Throwing requires proper facing and pose", true);
+ConfigOptionBool optionFerryChecksRelationshipWhenBuying(
+    "OpenApoc.NewFeature", "FerryChecksRelationshipWhenBuying",
+    "Transtellar checks relationship when buying items", true);
+ConfigOptionBool optionAllowManualCityTeleporters("OpenApoc.NewFeature",
+                                                  "AllowManualCityTeleporters",
+                                                  "Allow manual use of teleporters in city", true);
+ConfigOptionBool optionAllowManualCargoFerry("OpenApoc.NewFeature", "AllowManualCargoFerry",
+                                             "Allow manual ferrying of cargo and non-combatants",
+                                             true);
+ConfigOptionBool optionAllowSoldierTaxiUse("OpenApoc.NewFeature", "AllowSoldierTaxiUse",
+                                           "Allow soldiers to call taxi", true);
+ConfigOptionBool optionAllowUnloadingClips("OpenApoc.NewFeature", "AdvancedInventoryControls",
+                                           "Allow unloading clips and quick equip", true);
+ConfigOptionBool optionPayloadExplosion("OpenApoc.NewFeature", "PayloadExplosion",
+                                        "Ammunition explodes when blown up", true);
+ConfigOptionBool optionDisplayUnitPaths("OpenApoc.NewFeature", "DisplayUnitPaths",
+                                        "Display unit paths in battle", true);
+ConfigOptionBool optionAdditionalUnitIcons("OpenApoc.NewFeature", "AdditionalUnitIcons",
+                                           "Display additional unit icons (fatal, psi)", true);
+ConfigOptionBool optionAllowForceFiringParallel("OpenApoc.NewFeature", "AllowForceFiringParallel",
+                                                "Allow force-firing parallel to the ground", true);
+ConfigOptionBool optionRequireLOSToMaintainPsi("OpenApoc.NewFeature", "RequireLOSToMaintainPsi",
+                                               "Require LOS to maintain psi attack", true);
+ConfigOptionBool optionAllowAttackingOwnedVehicles("OpenApoc.NewFeature",
+                                                   "AllowAttackingOwnedVehicles",
+                                                   "Allow attacking owned vehicles", true);
+ConfigOptionBool optionCallExistingFerry("OpenApoc.NewFeature", "CallExistingFerry",
+                                         "Call existing transport instead of spawning them", true);
+ConfigOptionBool
+    optionAlternateVehicleShieldSound("OpenApoc.NewFeature", "AlternateVehicleShieldSound",
+                                      "Hitting vehicle shield produces alternate sound", true);
+ConfigOptionBool optionEnableAgentTemplates("OpenApoc.NewFeature", "EnableAgentTemplates",
+                                            "Enable agent equipment templates", true);
+ConfigOptionBool optionStoreDroppedEquipment("OpenApoc.NewFeature", "StoreDroppedEquipment",
+                                             "Attempt to recover agent equipment dropped in city",
+                                             true);
+ConfigOptionBool optionFallingGroundVehicles("OpenApoc.NewFeature", "CrashingGroundVehicles",
+                                             "Unsupported ground vehicles crash", true);
+
+ConfigOptionBool optionEnforceCargoLimits("OpenApoc.NewFeature", "EnforceCargoLimits",
+                                          "Enforce vehicle cargo limits", false);
+ConfigOptionBool optionAllowNearbyVehicleLootPickup("OpenApoc.NewFeature",
+                                                    "AllowNearbyVehicleLootPickup",
+                                                    "Allow nearby vehicles to pick up loot", true);
+ConfigOptionBool optionAllowBuildingLootDeposit("OpenApoc.NewFeature", "AllowBuildingLootDeposit",
+                                                "Allow loot to be stashed in the building", true);
+ConfigOptionBool optionArmoredRoads("OpenApoc.NewFeature", "ArmoredRoads", "Armored roads", true);
+ConfigOptionBool optionVanillaCityControls("OpenApoc.NewFeature", "OpenApocCityControls",
+                                           "Improved city control scheme", true);
+ConfigOptionBool optionCollapseRaidedBuilding("OpenApoc.NewFeature", "CollapseRaidedBuilding",
+                                              "Successful raid collapses building", true);
+ConfigOptionBool
+    optionScrambleOnUnintentionalHit("OpenApoc.NewFeature", "ScrambleOnUnintentionalHit",
+                                     "Any hit on hostile building provokes retaliation", false);
+ConfigOptionBool optionMarketRight("OpenApoc.NewFeature", "MarketOnRight",
+                                   "Put market stock on the right side", true);
+
+ConfigOptionBool optionStunHostileAction("OpenApoc.Mod", "StunHostileAction",
+                                         "Stunning hurts relationships", false);
+ConfigOptionBool optionRaidHostileAction("OpenApoc.Mod", "RaidHostileAction",
+                                         "Initiating raid hurts relationships", false);
+ConfigOptionBool optionBSKLauncherSound("OpenApoc.Mod", "BSKLauncherSound",
+                                        "(MOD) Original Brainsucker Launcher SFX", true);
+ConfigOptionBool optionInvulnerableRoads("OpenApoc.Mod", "InvulnerableRoads",
+                                         "(MOD) Invulnerable roads", false);
+ConfigOptionBool optionATVTank("OpenApoc.Mod", "ATVTank", "(MOD) Griffon becomes All-Terrain",
+                               true);
+ConfigOptionBool optionCrashingVehicles("OpenApoc.Mod", "CrashingVehicles",
+                                        "Vehicles crash on low HP", false);
+
 } // anonymous namespace
 
 namespace OpenApoc
@@ -353,7 +517,7 @@ Framework *Framework::tryGetInstance() { return instance; }
 
 void Framework::run(sp<Stage> initialStage)
 {
-	auto frameCount = frameLimit.get();
+	size_t frameCount = frameLimit.get();
 	if (!createWindow)
 	{
 		LogError("Trying to run framework without window");

@@ -2,10 +2,12 @@
 #include "forms/checkbox.h"
 #include "forms/form.h"
 #include "forms/label.h"
+#include "forms/listbox.h"
 #include "forms/scrollbar.h"
 #include "forms/textbutton.h"
 #include "forms/ui.h"
 #include "framework/configfile.h"
+#include "framework/data.h"
 #include "framework/event.h"
 #include "framework/framework.h"
 #include "framework/keycodes.h"
@@ -13,19 +15,166 @@
 #include "game/state/battle/battle.h"
 #include "game/state/gamestate.h"
 #include "game/ui/battle/battledebriefing.h"
-#include "game/ui/city/cityview.h"
 #include "game/ui/general/mainmenu.h"
 #include "game/ui/general/messagebox.h"
 #include "game/ui/general/savemenu.h"
-#include "game/ui/general/skirmish.h"
+#include "game/ui/skirmish/skirmish.h"
+#include "game/ui/tileview/cityview.h"
+#include <list>
 
 namespace OpenApoc
 {
+namespace
+{
+std::list<std::pair<UString, UString>> battleNotificationList = {
+    {"Notifications.Battle.HostileSpotted", "Hostile unit spotted"},
+    {"Notifications.Battle.HostileDied", "Hostile unit has died"},
+    {"Notifications.Battle.UnknownDied", "Unknown Unit has died"},
+    {"Notifications.Battle.AgentDiedBattle", "Unit has died"},
+    {"Notifications.Battle.AgentBrainsucked", "Unit Brainsucked"},
+    {"Notifications.Battle.AgentCriticallyWounded", "Unit critically wounded"},
+    {"Notifications.Battle.AgentBadlyInjured", "Unit badly injured"},
+    {"Notifications.Battle.AgentInjured", "Unit injured"},
+    {"Notifications.Battle.AgentUnderFire", "Unit under fire"},
+    {"Notifications.Battle.AgentUnconscious", "Unit has lost consciousness"},
+    {"Notifications.Battle.AgentLeftCombat", "Unit has left combat zone"},
+    {"Notifications.Battle.AgentFrozen", "Unit has frozen"},
+    {"Notifications.Battle.AgentBerserk", "Unit has gone beserk"},
+    {"Notifications.Battle.AgentPanicked", "Unit has panicked"},
+    {"Notifications.Battle.AgentPanicOver", "Unit has stopped panicking"},
+    {"Notifications.Battle.AgentPsiAttacked", "Psionic attack on unit"},
+    {"Notifications.Battle.AgentPsiControlled", "Unit under Psionic control"},
+    {"Notifications.Battle.AgentPsiOver", "Unit freed from Psionic control"},
+};
+
+std::list<std::pair<UString, UString>> cityNotificationList = {
+    {"Notifications.City.UfoSpotted", "UFO spotted"},
+    {"Notifications.City.VehicleLightDamage", "Vehicle lightly damaged"},
+    {"Notifications.City.VehicleModerateDamage", "Vehicle moderately damaged"},
+    {"Notifications.City.VehicleHeavyDamage", "Vehicle heavily damaged"},
+    {"Notifications.City.VehicleDestroyed", "Vehicle destroyed"},
+    {"Notifications.City.VehicleEscaping", "Vehicle damaged and returning to base"},
+    {"Notifications.City.VehicleNoAmmo", "Weapon out of ammo"},
+    {"Notifications.City.VehicleLowFuel", "Vehicle low on fuel"},
+    {"Notifications.City.AgentDiedCity", "Agent has died"},
+    {"Notifications.City.AgentArrived", "Agent arrived at base"},
+    {"Notifications.City.CargoArrived", "Cargo has arrived at base"},
+    {"Notifications.City.TransferArrived", "Transfer arrived at base"},
+    {"Notifications.City.RecoveryArrived", "Crash recovery arrived at base"},
+    {"Notifications.City.VehicleRepaired", "Vehicle repaired"},
+    {"Notifications.City.VehicleRearmed", "Vehicle rearmed"},
+    {"Notifications.City.NotEnoughAmmo", "Not enough ammo to rearm vehicle"},
+    {"Notifications.City.VehicleRefuelled", "Vehicle refuelled"},
+    {"Notifications.City.NotEnoughFuel", "Not enough fuel to refuel vehicle"},
+    {"Notifications.City.UnauthorizedVehicle", "Unauthorized vehicle detected"},
+};
+
+std::list<std::pair<UString, UString>> openApocList = {
+    {"OpenApoc.NewFeature.UFODamageModel", "X-Com: EU Damage Model (0-200%)"},
+    {"OpenApoc.NewFeature.InstantExplosionDamage", "Explosions deal damage instantly"},
+    {"OpenApoc.NewFeature.GravliftSounds", "Gravlift sounds"},
+    {"OpenApoc.NewFeature.NoInstantThrows", "Throwing requires proper facing and pose"},
+    {"OpenApoc.NewFeature.PayloadExplosion", "Ammunition explodes when blown up"},
+    {"OpenApoc.NewFeature.DisplayUnitPaths", "Display unit paths in battle"},
+    {"OpenApoc.NewFeature.AdditionalUnitIcons", "Display additional unit icons (fatal, psi)"},
+    {"OpenApoc.NewFeature.AllowForceFiringParallel", "Allow force-firing parallel to the ground"},
+    {"OpenApoc.NewFeature.RequireLOSToMaintainPsi", "(N) Require LOS to maintain psi attack"},
+    {"OpenApoc.NewFeature.AdvancedInventoryControls", "Allow unloading clips and quick equip"},
+    {"OpenApoc.NewFeature.EnableAgentTemplates", "Enable agent equipment templates"},
+    {"OpenApoc.NewFeature.FerryChecksRelationshipWhenBuying",
+     "Relationship check for purchase delivery"},
+    {"OpenApoc.NewFeature.AllowManualCityTeleporters", "Allow manual use of teleporters in city"},
+    {"OpenApoc.NewFeature.AllowManualCargoFerry", "Allow manual ferrying using owned vehicles"},
+    {"OpenApoc.NewFeature.AllowSoldierTaxiUse", "Allow soldiers to call taxi"},
+    {"OpenApoc.NewFeature.AllowAttackingOwnedVehicles", "Allow attacking owned vehicles"},
+    {"OpenApoc.NewFeature.CallExistingFerry", "Reallistic transportation system"},
+    {"OpenApoc.NewFeature.AlternateVehicleShieldSound", "Alternate vehicle shield hit SFX"},
+    {"OpenApoc.NewFeature.StoreDroppedEquipment",
+     "Attempt to recover agent equipment dropped in city"},
+    {"OpenApoc.NewFeature.EnforceCargoLimits", "(N) Enforce vehicle cargo limits"},
+    {"OpenApoc.NewFeature.AllowNearbyVehicleLootPickup", "Allow nearby vehicles to pick up loot"},
+    {"OpenApoc.NewFeature.AllowBuildingLootDeposit", "Allow loot to be stashed in the building"},
+    {"OpenApoc.NewFeature.ArmoredRoads", "Armored roads (20 armor value)"},
+    {"OpenApoc.NewFeature.CrashingGroundVehicles", "Unsupported ground vehicles crash"},
+    {"OpenApoc.NewFeature.OpenApocCityControls", "Improved city control scheme"},
+    {"OpenApoc.NewFeature.CollapseRaidedBuilding", "Successful raid collapses building"},
+    {"OpenApoc.NewFeature.ScrambleOnUnintentionalHit",
+     "Any hit on hostile building provokes retaliation"},
+    {"OpenApoc.NewFeature.MarketOnRight", "Put market stock on the right side"},
+    {"OpenApoc.Mod.StunHostileAction", "(M) Stunning hurts relationships"},
+    {"OpenApoc.Mod.RaidHostileAction", "(M) Initiating raid hurts relationships"},
+    {"OpenApoc.Mod.CrashingVehicles", "(M) Vehicles crash on low HP"},
+    {"OpenApoc.Mod.InvulnerableRoads", "(M) Invulnerable roads"},
+    {"OpenApoc.Mod.ATVTank", "(M) Griffon becomes All-Terrain"},
+    {"OpenApoc.Mod.BSKLauncherSound", "(M) Original Brainsucker Launcher SFX"},
+
+};
+
+std::vector<UString> listNames = {"Message Toggles", "OpenApoc Features"};
+}
 
 InGameOptions::InGameOptions(sp<GameState> state)
     : Stage(), menuform(ui().getForm("ingameoptions")), state(state)
 {
+}
 
+InGameOptions::~InGameOptions() {}
+
+void InGameOptions::saveList()
+{
+	auto listControl = menuform->findControlTyped<ListBox>("NOTIFICATIONS_LIST");
+	for (auto &c : listControl->Controls)
+	{
+		auto name = c->getData<UString>();
+		config().set(*name, std::dynamic_pointer_cast<CheckBox>(c)->isChecked());
+	}
+}
+
+void InGameOptions::loadList(int id)
+{
+	saveList();
+	curId = id;
+	menuform->findControlTyped<Label>("LIST_NAME")->setText(listNames[curId]);
+	std::list<std::pair<UString, UString>> *notificationList = nullptr;
+	switch (curId)
+	{
+		case 0:
+			notificationList =
+			    state->current_battle ? &battleNotificationList : &cityNotificationList;
+			break;
+		case 1:
+			notificationList = &openApocList;
+			break;
+	}
+	auto listControl = menuform->findControlTyped<ListBox>("NOTIFICATIONS_LIST");
+	listControl->clear();
+	auto font = ui().getFont("smalfont");
+	for (auto &p : *notificationList)
+	{
+		auto checkBox = mksp<CheckBox>(fw().data->loadImage("BUTTON_CHECKBOX_TRUE"),
+		                               fw().data->loadImage("BUTTON_CHECKBOX_FALSE"));
+		checkBox->Size = {240, 16};
+		checkBox->setData(mksp<UString>(p.first));
+		checkBox->setChecked(config().getBool(p.first));
+		auto label = checkBox->createChild<Label>(tr(p.second), font);
+		label->Size = {216, 16};
+		label->Location = {24, 0};
+		listControl->addItem(checkBox);
+	}
+}
+
+void InGameOptions::loadNextList()
+{
+	curId++;
+	if (curId > 1)
+	{
+		curId = 0;
+	}
+	loadList(curId);
+}
+
+void InGameOptions::begin()
+{
 	/* Initialse all initial values */
 
 	menuform->findControlTyped<ScrollBar>("GLOBAL_GAIN_SLIDER")
@@ -37,16 +186,28 @@ InGameOptions::InGameOptions(sp<GameState> state)
 	menuform->findControlTyped<ScrollBar>("SAMPLE_GAIN_SLIDER")
 	    ->setValue(config().getInt("Framework.Audio.SampleGain"));
 
-	menuform->findControlTyped<CheckBox>("SHOW_VEHICLE_PATH")->setChecked(state->showVehiclePath);
-	menuform->findControlTyped<CheckBox>("SHOW_TILE_ORIGIN")->setChecked(state->showTileOrigin);
-	menuform->findControlTyped<CheckBox>("SHOW_SELECTABLE_BOUNDS")
-	    ->setChecked(state->showSelectableBounds);
+	menuform->findControlTyped<CheckBox>("AUTO_SCROLL")
+	    ->setChecked(config().getBool("Options.Misc.AutoScroll"));
+	menuform->findControlTyped<CheckBox>("TOOL_TIPS")
+	    ->setChecked(config().getBool("Options.Misc.ToolTips"));
+	menuform->findControlTyped<CheckBox>("ACTION_MUSIC")
+	    ->setChecked(config().getBool("Options.Misc.ActionMusic"));
+	menuform->findControlTyped<CheckBox>("AUTO_EXECUTE_ORDERS")
+	    ->setChecked(config().getBool("Options.Misc.AutoExecute"));
 
 	menuform->findControlTyped<TextButton>("BUTTON_BATTLE")
 	    ->setText(state->current_battle ? "Exit Battle" : "Skirmish Mode");
+
+	menuform->findControlTyped<Label>("TEXT_FUNDS")->setText(state->getPlayerBalance());
+
+	loadList(0);
 }
 
-InGameOptions::~InGameOptions()
+void InGameOptions::pause() {}
+
+void InGameOptions::resume() {}
+
+void InGameOptions::finish()
 {
 	/* Store persistent options */
 
@@ -56,18 +217,18 @@ InGameOptions::~InGameOptions()
 	             menuform->findControlTyped<ScrollBar>("MUSIC_GAIN_SLIDER")->getValue());
 	config().set("Framework.Audio.SampleGain",
 	             menuform->findControlTyped<ScrollBar>("SAMPLE_GAIN_SLIDER")->getValue());
+
+	config().set("Options.Misc.AutoScroll",
+	             menuform->findControlTyped<CheckBox>("AUTO_SCROLL")->isChecked());
+	config().set("Options.Misc.ToolTips",
+	             menuform->findControlTyped<CheckBox>("TOOL_TIPS")->isChecked());
+	config().set("Options.Misc.ActionMusic",
+	             menuform->findControlTyped<CheckBox>("ACTION_MUSIC")->isChecked());
+	config().set("Options.Misc.AutoExecute",
+	             menuform->findControlTyped<CheckBox>("AUTO_EXECUTE_ORDERS")->isChecked());
+
+	saveList();
 }
-
-void InGameOptions::begin()
-{
-	menuform->findControlTyped<Label>("TEXT_FUNDS")->setText(state->getPlayerBalance());
-}
-
-void InGameOptions::pause() {}
-
-void InGameOptions::resume() {}
-
-void InGameOptions::finish() {}
 
 void InGameOptions::eventOccurred(Event *e)
 {
@@ -89,35 +250,40 @@ void InGameOptions::eventOccurred(Event *e)
 			fw().stageQueueCommand({StageCmd::Command::POP});
 			return;
 		}
-		else if (e->forms().RaisedBy->Name == "BUTTON_ABANDONGAME")
+		if (e->forms().RaisedBy->Name == "BUTTON_ABANDONGAME")
 		{
 			fw().stageQueueCommand({StageCmd::Command::REPLACEALL, mksp<MainMenu>()});
 			return;
 		}
-		else if (e->forms().RaisedBy->Name == "BUTTON_QUIT")
+		if (e->forms().RaisedBy->Name == "BUTTON_QUIT")
 		{
 			fw().stageQueueCommand({StageCmd::Command::QUIT});
 			return;
 		}
-		else if (e->forms().RaisedBy->Name == "BUTTON_SAVEGAME")
+		if (e->forms().RaisedBy->Name == "BUTTON_SAVEGAME")
 		{
 			fw().stageQueueCommand(
 			    {StageCmd::Command::PUSH, mksp<SaveMenu>(SaveMenuAction::Save, state)});
 			return;
 		}
-		else if (e->forms().RaisedBy->Name == "BUTTON_DELETESAVEDGAME")
+		if (e->forms().RaisedBy->Name == "BUTTON_DELETESAVEDGAME")
 		{
 			fw().stageQueueCommand(
 			    {StageCmd::Command::PUSH, mksp<SaveMenu>(SaveMenuAction::Delete, state)});
 			return;
 		}
-		else if (e->forms().RaisedBy->Name == "BUTTON_LOADGAME")
+		if (e->forms().RaisedBy->Name == "BUTTON_LOADGAME")
 		{
 			fw().stageQueueCommand(
 			    {StageCmd::Command::PUSH, mksp<SaveMenu>(SaveMenuAction::Load, state)});
 			return;
 		}
-		else if (e->forms().RaisedBy->Name == "BUTTON_GIVE_ALL_RESEARCH")
+		if (e->forms().RaisedBy->Name == "BUTTON_NEXT_LIST")
+		{
+			loadNextList();
+			return;
+		}
+		if (e->forms().RaisedBy->Name == "BUTTON_GIVE_ALL_RESEARCH")
 		{
 			for (auto &r : this->state->research.topics)
 			{
@@ -127,20 +293,21 @@ void InGameOptions::eventOccurred(Event *e)
 				{
 					LogWarning("Topic \"%s\" already complete", r.first);
 				}
-				else
+
 				{
-					topic->man_hours_progress = topic->man_hours;
+					topic->forceComplete();
 					LogWarning("Topic \"%s\" marked as complete", r.first);
 				}
 			}
 			this->state->research.resortTopicList();
 			return;
 		}
-		else if (e->forms().RaisedBy->Name == "BUTTON_BATTLE")
+		if (e->forms().RaisedBy->Name == "BUTTON_BATTLE")
 		{
 			if (state->current_battle)
 			{
-				int unitsLost = state->current_battle->killStrandedUnits(*state, true);
+				int unitsLost = state->current_battle->killStrandedUnits(
+				    *state, state->current_battle->currentPlayer, true);
 				fw().stageQueueCommand(
 				    {StageCmd::Command::PUSH,
 				     mksp<MessageBox>(tr("Abort Mission"),
@@ -201,23 +368,10 @@ void InGameOptions::eventOccurred(Event *e)
 	if (e->type() == EVENT_FORM_INTERACTION &&
 	    e->forms().EventFlag == FormEventType::CheckBoxChange)
 	{
-		if (e->forms().RaisedBy->Name == "SHOW_VEHICLE_PATH")
+		if (e->forms().RaisedBy->Name == "SOME_NON_CONFIG_FILE_OPTION_OR_HAS_TO_EFFECT_IMMEDIATELY")
 		{
 			auto box = std::dynamic_pointer_cast<CheckBox>(e->forms().RaisedBy);
-			state->showVehiclePath = box->isChecked();
-			LogWarning("Set SHOW_VEHICLE_PATH to %d", box->isChecked());
-		}
-		if (e->forms().RaisedBy->Name == "SHOW_TILE_ORIGIN")
-		{
-			auto box = std::dynamic_pointer_cast<CheckBox>(e->forms().RaisedBy);
-			state->showTileOrigin = box->isChecked();
-			LogWarning("Set SHOW_TILE_ORIGIN to %d", box->isChecked());
-		}
-		if (e->forms().RaisedBy->Name == "SHOW_SELECTABLE_BOUNDS")
-		{
-			auto box = std::dynamic_pointer_cast<CheckBox>(e->forms().RaisedBy);
-			state->showSelectableBounds = box->isChecked();
-			LogWarning("Set SHOW_SELECTABLE_BOUNDS to %d", box->isChecked());
+			// Set non-config option here or do the effect
 		}
 	}
 }

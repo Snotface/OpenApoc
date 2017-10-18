@@ -2,7 +2,7 @@
 #include "forms/checkbox.h"
 #include "forms/form.h"
 #include "forms/label.h"
-#include "forms/list.h"
+#include "forms/listbox.h"
 #include "forms/textbutton.h"
 #include "forms/ui.h"
 #include "framework/data.h"
@@ -148,8 +148,11 @@ void FormPreview::eventOccurred(Event *e)
 			}
 
 			currentSelected = std::dynamic_pointer_cast<Label>(e->forms().RaisedBy);
-			currentSelected->BackgroundColour.a = 255;
-			displayform = ui().getForm(currentSelected->Name);
+			if (currentSelected != nullptr)
+			{
+				currentSelected->BackgroundColour.a = 255;
+				displayform = ui().getForm(currentSelected->Name);
+			}
 
 			return;
 		}

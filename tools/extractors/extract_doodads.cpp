@@ -1,8 +1,8 @@
 #include "framework/data.h"
 #include "framework/framework.h"
-#include "game/state/agent.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/doodad_type.h"
+#include "game/state/rules/doodadtype.h"
+#include "game/state/shared/agent.h"
 #include "library/strings_format.h"
 #include "tools/extractors/common/doodads.h"
 #include "tools/extractors/extractors.h"
@@ -25,7 +25,9 @@ void InitialGameStateExtractor::extractDoodads(GameState &state) const
 
 		for (int i = 1; i <= 15; i++)
 		{
+			auto d = mksp<DoodadType>();
 			UString doodad_id;
+			bool slow = false;
 			switch (i)
 			{
 				case UFO_DOODAD_1:
@@ -42,9 +44,12 @@ void InitialGameStateExtractor::extractDoodads(GameState &state) const
 					break;
 				case UFO_DOODAD_5:
 					doodad_id = "DOODAD_5_SMOKE_EXPLOSION";
+					slow = true;
 					break;
 				case UFO_DOODAD_6:
 					doodad_id = "DOODAD_6_DIMENSION_GATE";
+					slow = true;
+					d->repeatable = true;
 					break;
 				case UFO_DOODAD_7:
 					doodad_id = "DOODAD_7_JANITOR";
@@ -66,6 +71,7 @@ void InitialGameStateExtractor::extractDoodads(GameState &state) const
 					break;
 				case UFO_DOODAD_13:
 					doodad_id = "DOODAD_13_SMOKE_FUME";
+					d->repeatable = true;
 					break;
 				case UFO_DOODAD_14:
 					doodad_id = "DOODAD_14_INFILTRATION_BIG";
@@ -76,18 +82,17 @@ void InitialGameStateExtractor::extractDoodads(GameState &state) const
 			}
 
 			auto tabOffsets = doodadTabOffsets[i - 1];
-			auto d = mksp<DoodadType>();
 
 			d->imageOffset = CITY_IMAGE_OFFSET;
-			d->lifetime = (tabOffsets.y - tabOffsets.x) * frameTTL;
-			d->repeatable = i == UFO_DOODAD_6; // dimension gate
+			d->lifetime = (tabOffsets.y - tabOffsets.x) * frameTTL * (slow ? 2 : 1);
 			for (int j = tabOffsets.x; j < tabOffsets.y; j++)
 			{
+
 				d->frames.push_back(
 				    {fw().data->loadImage(format("PCK:xcom3/ufodata/ptang.pck:xcom3/ufodata/"
 				                                 "ptang.tab:%d",
 				                                 j)),
-				     frameTTL});
+				     frameTTL * (slow ? 2 : 1)});
 			}
 
 			state.doodad_types[doodad_id] = d;

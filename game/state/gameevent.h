@@ -1,11 +1,12 @@
 #pragma once
 
 #include "framework/event.h"
-#include "game/state/gameevent_types.h"
+#include "game/state/gameeventtypes.h"
 #include "game/state/stateobject.h"
 #include "library/sp.h"
 #include "library/strings.h"
 #include "library/vec.h"
+#include <map>
 
 namespace OpenApoc
 {
@@ -19,11 +20,14 @@ class Battle;
 class ResearchTopic;
 class Lab;
 class Facility;
+class Organisation;
 
 class GameEvent : public Event
 {
   public:
 	GameEventType type;
+
+	static const std::map<GameEventType, UString> optionsMap;
 
 	GameEvent(GameEventType type);
 	~GameEvent() override = default;
@@ -46,8 +50,11 @@ class GameBaseEvent : public GameEvent
 {
   public:
 	StateRef<Base> base;
+	StateRef<Organisation> actor;
+	bool flag = false;
 
-	GameBaseEvent(GameEventType type, StateRef<Base> base);
+	GameBaseEvent(GameEventType type, StateRef<Base> base, StateRef<Organisation> actor = nullptr,
+	              bool flag = false);
 	~GameBaseEvent() override = default;
 	UString message() override;
 };
@@ -56,8 +63,10 @@ class GameBuildingEvent : public GameEvent
 {
   public:
 	StateRef<Building> building;
+	StateRef<Organisation> actor;
 
-	GameBuildingEvent(GameEventType type, StateRef<Building> building);
+	GameBuildingEvent(GameEventType type, StateRef<Building> building,
+	                  StateRef<Organisation> actor = nullptr);
 	~GameBuildingEvent() override = default;
 	UString message() override;
 };
@@ -71,13 +80,36 @@ class GameOrganisationEvent : public GameEvent
 	~GameOrganisationEvent() override = default;
 };
 
+class GameDefenseEvent : public GameEvent
+{
+  public:
+	StateRef<Base> base;
+	StateRef<Organisation> organisation;
+
+	GameDefenseEvent(GameEventType type, StateRef<Base> base, StateRef<Organisation> organisation);
+	~GameDefenseEvent() override = default;
+};
+
 class GameAgentEvent : public GameEvent
 {
   public:
 	StateRef<Agent> agent;
+	bool flag;
 
-	GameAgentEvent(GameEventType type, StateRef<Agent> agent);
+	GameAgentEvent(GameEventType type, StateRef<Agent> agent, bool flag = false);
 	~GameAgentEvent() override = default;
+	UString message() override;
+};
+
+class GameSomethingDiedEvent : public GameEvent
+{
+  public:
+	UString messageInner;
+	Vec3<int> location;
+
+	GameSomethingDiedEvent(GameEventType type, UString name, UString actor, Vec3<int> location);
+	GameSomethingDiedEvent(GameEventType type, UString name, Vec3<int> location);
+	~GameSomethingDiedEvent() override = default;
 	UString message() override;
 };
 

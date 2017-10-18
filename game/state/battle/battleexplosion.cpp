@@ -1,4 +1,5 @@
 #include "game/state/battle/battleexplosion.h"
+#include "framework/configfile.h"
 #include "framework/framework.h"
 #include "framework/logger.h"
 #include "framework/sound.h"
@@ -6,16 +7,16 @@
 #include "game/state/battle/battlehazard.h"
 #include "game/state/battle/battleitem.h"
 #include "game/state/battle/battlemappart.h"
-#include "game/state/battle/battlemappart_type.h"
 #include "game/state/battle/battleunit.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/damage.h"
-#include "game/state/rules/doodad_type.h"
-#include "game/state/tileview/tile.h"
-#include "game/state/tileview/tileobject_battlehazard.h"
-#include "game/state/tileview/tileobject_battleitem.h"
-#include "game/state/tileview/tileobject_battlemappart.h"
-#include "game/state/tileview/tileobject_battleunit.h"
+#include "game/state/rules/battle/battlemapparttype.h"
+#include "game/state/rules/battle/damage.h"
+#include "game/state/rules/doodadtype.h"
+#include "game/state/tilemap/tilemap.h"
+#include "game/state/tilemap/tileobject_battlehazard.h"
+#include "game/state/tilemap/tileobject_battleitem.h"
+#include "game/state/tilemap/tileobject_battlemappart.h"
+#include "game/state/tilemap/tileobject_battleunit.h"
 #include "library/strings_format.h"
 #include <cmath>
 
@@ -280,9 +281,7 @@ void BattleExplosion::expand(GameState &state, const TileMap &map, const Vec3<in
 		}
 	}
 	// FIXME: Actually read this option
-	bool USER_OPTION_FULLY_3D_EXPLOSIONS = false;
-	int distance = (1 + (dir.x != 0 ? 1 : 0) + (dir.y != 0 ? 1 : 0) +
-	                (dir.z != 0 ? (USER_OPTION_FULLY_3D_EXPLOSIONS ? 1 : 2) : 0));
+	int distance = (1 + (dir.x != 0 ? 1 : 0) + (dir.y != 0 ? 1 : 0) + (dir.z != 0 ? 2 : 0));
 	nextPower -= depletionRate * distance / 2;
 
 	// If we reach the tile, and our type has no range dissipation, just apply power

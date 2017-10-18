@@ -1,7 +1,8 @@
 #include "framework/data.h"
 #include "framework/framework.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/vequipment_type.h"
+#include "game/state/rules/city/vammotype.h"
+#include "game/state/rules/city/vequipmenttype.h"
 #include "library/strings_format.h"
 #include "tools/extractors/common/doodads.h"
 #include "tools/extractors/common/ufo2p.h"
@@ -13,6 +14,22 @@ namespace OpenApoc
 void InitialGameStateExtractor::extractVehicleEquipment(GameState &state) const
 {
 	auto &data = this->ufo2p;
+
+	// Initial stuff
+	state.initial_vehicle_equipment.emplace_back(
+	    StateRef<VEquipmentType>{&state, "VEQUIPMENTTYPE_BOLTER_4000_LASER_GUN"}, 2);
+	state.initial_vehicle_equipment.emplace_back(
+	    StateRef<VEquipmentType>{&state, "VEQUIPMENTTYPE_LANCER_7000_LASER_GUN"}, 2);
+	state.initial_vehicle_ammo.emplace_back(
+	    StateRef<VAmmoType>{&state, "VEQUIPMENTAMMOTYPE_AIRGUARD_52MM_CANNON_ROUND"}, 500);
+	state.initial_vehicle_ammo.emplace_back(
+	    StateRef<VAmmoType>{&state, "VEQUIPMENTAMMOTYPE_GROUND_LAUNCHED_MISSILE"}, 50);
+	state.initial_vehicle_ammo.emplace_back(
+	    StateRef<VAmmoType>{&state, "VEQUIPMENTAMMOTYPE_JANITOR_MISSILE"}, 150);
+	state.initial_vehicle_ammo.emplace_back(
+	    StateRef<VAmmoType>{&state, "VEQUIPMENTAMMOTYPE_ELERIUM_115"}, 500);
+	state.initial_vehicle_ammo.emplace_back(
+	    StateRef<VAmmoType>{&state, "VEQUIPMENTAMMOTYPE_FUSION_POWERFUEL"}, 1000);
 
 	// FIXME: Track these as some things (the weapon icon?) seem to be ordered by when they're
 	// defined
@@ -55,7 +72,8 @@ void InitialGameStateExtractor::extractVehicleEquipment(GameState &state) const
 		// FIXME: max_ammo 0xffff is used for 'no ammo' (IE automatically-recharging stuff)
 
 		e->max_ammo = edata.max_ammo;
-		e->ammo_type = format("%d", (int)edata.ammo_type);
+		// This is wrong!?
+		// e->ammo_type = format("%d", (int)edata.ammo_type);
 		// Force all sprites into the correct palette by using A_RANDOM_VEHICLES_BACKGROUND pcx
 		//(I assume the parts of the palette used for this are the same on all?)
 		e->equipscreen_sprite = fw().data->loadImage(format(
@@ -88,6 +106,7 @@ void InitialGameStateExtractor::extractVehicleEquipment(GameState &state) const
 				e->guided = wData.guided != 0 ? true : false;
 				e->turn_rate = wData.turn_rate;
 				e->range = wData.range;
+				e->ttl = wData.ttl;
 				e->firing_arc_1 = wData.firing_arc_1;
 				e->firing_arc_2 = wData.firing_arc_2;
 				e->point_defence = wData.point_defence != 0 ? true : false;

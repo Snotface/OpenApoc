@@ -1,18 +1,57 @@
 #include "framework/data.h"
 #include "framework/framework.h"
-#include "game/state/agent.h"
-#include "game/state/battle/battlecommonimagelist.h"
-#include "game/state/battle/battlecommonsamplelist.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/aequipment_type.h"
-#include "game/state/rules/damage.h"
+#include "game/state/rules/aequipmenttype.h"
+#include "game/state/rules/battle/battlecommonimagelist.h"
+#include "game/state/rules/battle/battlecommonsamplelist.h"
+#include "game/state/rules/battle/damage.h"
+#include "game/state/rules/city/citycommonimagelist.h"
+#include "game/state/rules/city/citycommonsamplelist.h"
+#include "game/state/shared/agent.h"
 #include "library/strings_format.h"
+#include "library/voxel.h"
 #include "tools/extractors/common/tacp.h"
 #include "tools/extractors/extractors.h"
 #include <limits>
 
 namespace OpenApoc
 {
+
+void InitialGameStateExtractor::extractSharedCityResources(GameState &state) const
+{
+	state.city_common_image_list = mksp<CityCommonImageList>();
+	state.city_common_image_list->strategyImages = mksp<std::vector<sp<Image>>>();
+	for (size_t i = 544; i <= 589; i++)
+	{
+		state.city_common_image_list->strategyImages->push_back(
+		    fw().data->loadImage(format("PCKSTRAT:xcom3/ufodata/stratmap.pck:xcom3/ufodata/"
+		                                "stratmap.tab:%u",
+		                                (unsigned)i)));
+	}
+	state.city_common_image_list->agentIsometric = fw().data->loadImage(format(
+	    "PCK:xcom3/ufodata/icon_m.pck:xcom3/ufodata/icon_m.tab:%d:xcom3/ufodata/pal_01.dat", 26));
+	state.city_common_image_list->agentStrategic =
+	    fw().data->loadImage(format("PCKSTRAT:xcom3/ufodata/stratmap.pck:xcom3/ufodata/"
+	                                "stratmap.tab:%d",
+	                                571));
+	for (int i = 586; i <= 589; i++)
+	{
+		state.city_common_image_list->portalStrategic.push_back(
+		    fw().data->loadImage(format("PCKSTRAT:xcom3/ufodata/stratmap.pck:xcom3/ufodata/"
+		                                "stratmap.tab:%d",
+		                                i)));
+	}
+	state.city_common_image_list->projectileVoxelMap =
+	    std::make_shared<VoxelMap>(Vec3<int>{32, 32, 16});
+	for (int i = 6; i < 10; i++)
+	{
+		state.city_common_image_list->projectileVoxelMap->setSlice(
+		    i,
+		    fw().data->loadVoxelSlice(format("LOFTEMPS:xcom3/ufodata/loftemps.dat:xcom3/"
+		                                     "ufodata/loftemps.tab:%d",
+		                                     112)));
+	}
+}
 
 void InitialGameStateExtractor::extractSharedBattleResources(GameState &state) const
 {
@@ -60,6 +99,29 @@ void InitialGameStateExtractor::extractSharedBattleResources(GameState &state) c
 	    fw().data->loadImage(format("PCK:xcom3/tacdata/icons.pck:xcom3/tacdata/"
 	                                "icons.tab:%d:xcom3/tacdata/tactical.pal",
 	                                67)));
+
+	state.city_common_sample_list = mksp<CityCommonSampleList>();
+
+	state.city_common_sample_list->teleport =
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/strategc/explosns/teleport.raw:22050");
+	state.city_common_sample_list->vehicleExplosion =
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/strategc/explosns/explosn2.raw:22050");
+	state.city_common_sample_list->sceneryExplosion =
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/extra/expterr.raw:11025");
+	state.city_common_sample_list->shieldHit =
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/strategc/explosns/shldhit1.raw:22050");
+	state.city_common_sample_list->dimensionShiftIn =
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/strategc/terrain/dgate_in.raw:22050");
+	state.city_common_sample_list->dimensionShiftOut =
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/strategc/terrain/dgat_out.raw:22050");
+	state.city_common_sample_list->alertSounds.emplace_back(
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/zextra/alert.raw:22050"));
+	state.city_common_sample_list->alertSounds.emplace_back(
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/zextra/alert2.raw:22050"));
+	state.city_common_sample_list->alertSounds.emplace_back(
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/zextra/alert3.raw:22050"));
+	state.city_common_sample_list->alertSounds.emplace_back(
+	    fw().data->loadSample("RAWSOUND:xcom3/rawsound/zextra/alert4.raw:22050"));
 
 	// Common Sounds
 

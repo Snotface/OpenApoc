@@ -1,7 +1,7 @@
 #include "framework/configfile.h"
 #include "framework/logger.h"
-#include "game/state/tileview/collision.h"
-#include "game/state/tileview/tile.h"
+#include "game/state/tilemap/collision.h"
+#include "game/state/tilemap/tilemap.h"
 #include "library/voxel.h"
 #include <array>
 #include <utility>
@@ -16,7 +16,7 @@ class FakeSceneryTileObject : public TileObject
 	sp<VoxelMap> voxel;
 
 	Vec3<float> getPosition() const override { return this->position; }
-	bool hasVoxelMap() override { return true; }
+	bool hasVoxelMap() const override { return true; }
 	sp<VoxelMap> getVoxelMap(Vec3<int>, bool) const override { return this->voxel; }
 
 	FakeSceneryTileObject(TileMap &map, Vec3<float> bounds, sp<VoxelMap> voxelMap)

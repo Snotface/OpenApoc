@@ -1,8 +1,7 @@
 #pragma once
 
-#include "game/state/agent.h"
-#include "game/state/tileview/tile.h"
-#include "game/state/tileview/tileobject_battleunit.h"
+#include "game/state/shared/agent.h"
+#include "game/state/tilemap/tilemap.h"
 #include "library/sp.h"
 #include "library/strings.h"
 #include "library/vec.h"
@@ -13,6 +12,7 @@ namespace OpenApoc
 class BattleUnit;
 class Tile;
 class TileMap;
+class TileObjectBattleUnit;
 enum class BattleUnitType;
 
 class BattleUnitTileHelper : public CanEnterTileHelper
@@ -23,6 +23,7 @@ class BattleUnitTileHelper : public CanEnterTileHelper
 	bool flying;
 	int maxHeight;
 	sp<TileObjectBattleUnit> tileObject;
+	bool canJump = false;
 
   public:
 	BattleUnitTileHelper(TileMap &map, BattleUnit &u);
@@ -36,10 +37,13 @@ class BattleUnitTileHelper : public CanEnterTileHelper
 	float getDistance(Vec3<float> from, Vec3<float> toStart, Vec3<float> toEnd) const override;
 
 	bool canEnterTile(Tile *from, Tile *to, bool ignoreStaticUnits = false,
-	                  bool ignoreAllUnits = false) const override;
+	                  bool ignoreMovingUnits = true, bool ignoreAllUnits = false) const override;
+	// Alexey Andronov:
+	// This huge function figures out wether unit can go from one tile to another
+	// It's huge but I see no way to split it
 	bool canEnterTile(Tile *from, Tile *to, bool allowJumping, bool &jumped, float &cost,
 	                  bool &doorInTheWay, bool ignoreStaticUnits = false,
-	                  bool ignoreAllUnits = false) const override;
+	                  bool ignoreMovingUnits = true, bool ignoreAllUnits = false) const override;
 
 	float pathOverheadAlloawnce() const override { return 1.25f; }
 
@@ -81,11 +85,13 @@ class BattleUnitMission
 
 	// Methods (main)
 
-	// Called each owner's update, plus guaranteed to be called before finished/cancelled mission is
-	// removed
+	// Called each owner's update, plus always called before finished/cancelled mission is removed
 	void update(GameState &state, BattleUnit &u, unsigned int ticks, bool finished = false);
+	// Checks wether mission is finished
 	bool isFinished(GameState &state, BattleUnit &u, bool callUpdateIfFinished = true);
+	// Start mission
 	void start(GameState &state, BattleUnit &u);
+	// Calculate path to target using pathfinding and set it
 	void setPathTo(GameState &state, BattleUnit &u, Vec3<int> target);
 
 	// Methods to request next action
@@ -100,20 +106,21 @@ class BattleUnitMission
 	MovementState getNextMovementState(GameState &state, BattleUnit &u);
 
 	// Spend agent TUs or append AcquireTU mission
+	// Return wether successfully spent TU
 	bool spendAgentTUs(GameState &state, BattleUnit &u, int cost, bool cancel = false,
 	                   bool ignoreKneelReserve = false, bool allowInterrupt = false);
-
-	static int getTurnCost(BattleUnit &u);
-	static int getBodyStateChangeCost(const BattleUnit &u, BodyState from, BodyState to);
+	// Get next facing step when turning towards target facing
 	static Vec2<int> getFacingStep(BattleUnit &u, Vec2<int> targetFacing, int facingDelta = 0);
 	// Used to determine target facings
 	static Vec2<int> getFacing(BattleUnit &u, Vec3<float> from, Vec3<float> to,
 	                           int facingDelta = 0);
+	// Get facing from unit to a 3d point
 	static Vec2<int> getFacing(BattleUnit &u, Vec3<int> to, int facingDelta = 0);
-	// Used to help with deltas
+	// Get facing delta from facing to facing
 	static int getFacingDelta(Vec2<int> curFacing, Vec2<int> tarFacing);
 
 	// Methods to create new missions
+
 	static BattleUnitMission *gotoLocation(BattleUnit &u, Vec3<int> target, int facingDelta = 0,
 	                                       bool demandGiveWay = false, bool allowSkipNodes = true,
 	                                       int giveWayAttempts = 20, bool allowRunningAway = false);
@@ -134,16 +141,27 @@ class BattleUnitMission
 	static BattleUnitMission *brainsuck(BattleUnit &u, StateRef<BattleUnit> target,
 	                                    int facingDelta);
 	static BattleUnitMission *jump(BattleUnit &u, Vec3<float> target,
-	                               BodyState state = BodyState::Standing);
+	                               BodyState state = BodyState::Standing,
+	                               bool requireFacing = true);
 
+	// Get mission name (for debug output)
 	UString getName();
 
-	Type type = Type::GotoLocation;
+	// Properties all missions have
 
-	// GotoLocation, ThrowItem, ReachGoal
+	// Mission type
+	Type type = Type::GotoLocation;
+	// Mission cancelled (due to unsufficient TUs or something else failing)
+	bool cancelled = false;
+
+	// Properties unique to certain missions
+
+	// [GotoLocation, ThrowItem, ReachGoal]
+
 	Vec3<int> targetLocation = {0, 0, 0};
 
-	// GotoLocation
+	// [GotoLocation]
+
 	int facingDelta = 0;
 	int giveWayAttemptsRemaining = 0;
 	bool allowRunningAway = false;
@@ -153,40 +171,47 @@ class BattleUnitMission
 	bool allowSkipNodes = false;
 	// Unit will ignore static non-large units when pathfinding
 	bool demandGiveWay = false;
+	// Unit will path around moving units as it is blocked by one
+	bool blockedByMovingUnit = false;
 	// Unit paid for movement before turning and will be refunded when actually moving
 	int costPaidUpFront = 0;
 
-	// Turn
+	// [Turn]
+
 	Vec2<int> targetFacing = {0, 0};
 	bool requireGoal = false;
 	bool freeTurn = false;
 
-	// ThrowItem, DropItem, Teleport
+	// [ThrowItem, DropItem, Teleport]
+
 	sp<AEquipment> item;
 
-	// ThrorwItem
+	// [ThrowItem]
+
 	float velocityXY = 0.0f;
 	float velocityZ = 0.0f;
 
-	// Snooze
+	// [Snooze]
+
 	unsigned int timeToSnooze = 0;
 
-	// AcquireTU
+	// [AcquireTU]
+
 	bool allowContinue = false;
 
-	// ChangeBodyState
+	// [ChangeBodyState]
+
 	BodyState targetBodyState = BodyState::Downed;
 
-	// Jump
+	// [Jump]
+
 	Vec3<float> jumpTarget = {0.0f, 0.0f, 0.0f};
 	bool jumped = false;
 
-	// Brainsuck
+	// [Brainsuck]
+
 	StateRef<BattleUnit> targetUnit;
 	unsigned int brainsuckTicksAccumulated = 0;
 	unsigned int brainsuckSoundsPlayed = 0;
-
-	// Mission cancelled (due to unsufficient TUs or something else failing)
-	bool cancelled = false;
 };
 } // namespace OpenApoc

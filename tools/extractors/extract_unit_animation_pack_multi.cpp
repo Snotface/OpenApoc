@@ -1,9 +1,9 @@
 #include "framework/data.h"
 #include "framework/framework.h"
 #include "framework/palette.h"
-#include "game/state/agent.h"
-#include "game/state/battle/battleunitanimationpack.h"
 #include "game/state/gamestate.h"
+#include "game/state/rules/battle/battleunitanimationpack.h"
+#include "game/state/shared/agent.h"
 #include "tools/extractors/common/animation.h"
 #include "tools/extractors/extractors.h"
 
@@ -46,7 +46,6 @@ void extractAnimationPackMultiInternal(sp<BattleUnitAnimationPack> p,
 {
 	// Units per 100 frames
 	static const int pFrames = 300; // Prone
-	static const int wFrames = 300; // Walk
 
 	// Standart animations
 	{

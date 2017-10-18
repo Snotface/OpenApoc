@@ -1,8 +1,10 @@
 #pragma once
 
-#include "game/state/agent.h"
+#include "game/state/city/economyinfo.h"
+#include "game/state/city/research.h"
+#include "game/state/gameeventtypes.h"
 #include "game/state/gametime.h"
-#include "game/state/research.h"
+#include "game/state/shared/agent.h"
 #include "game/state/stateobject.h"
 #include "library/sp.h"
 #include "library/strings.h"
@@ -34,6 +36,8 @@ class UfopaediaCategory;
 class BattleMap;
 class EquipmentSet;
 class Battle;
+class CityCommonImageList;
+class CityCommonSampleList;
 class BattleCommonImageList;
 class BattleCommonSampleList;
 class BattleMapPartType;
@@ -43,11 +47,10 @@ class BuildingFunction;
 
 static const int MAX_MESSAGES = 50;
 static const unsigned ORIGINAL_TICKS = 36;
+static const bool UPDATE_EVERY_TICK = false;
+
 class GameState : public std::enable_shared_from_this<GameState>
 {
-  private:
-	void update(unsigned int ticks);
-
   public:
 	StateRefMap<VehicleType> vehicle_types;
 	StateRefMap<Organisation> organisations;
@@ -72,6 +75,8 @@ class GameState : public std::enable_shared_from_this<GameState>
 	StateRefMap<EquipmentSet> equipment_sets_by_level;
 	StateRefMap<BuildingFunction> building_functions;
 	sp<Battle> current_battle;
+	sp<CityCommonImageList> city_common_image_list;
+	sp<CityCommonSampleList> city_common_sample_list;
 	sp<BattleCommonImageList> battle_common_image_list;
 	sp<BattleCommonSampleList> battle_common_sample_list;
 
@@ -85,6 +90,7 @@ class GameState : public std::enable_shared_from_this<GameState>
 	int score = 0;
 	int difficulty = 0;
 	bool firstDetection = false;
+	uint64_t nextInvasion = 0;
 
 	StateRefMap<AgentType> agent_types;
 	StateRefMap<AgentBodyType> agent_body_types;
@@ -95,14 +101,30 @@ class GameState : public std::enable_shared_from_this<GameState>
 	std::map<AgentType::Role, unsigned> initial_agents;
 	std::map<UString, unsigned> initial_facilities;
 	std::list<std::list<StateRef<AEquipmentType>>> initial_agent_equipment;
+	std::list<std::pair<StateRef<VehicleType>, int>> initial_vehicles;
+	std::list<std::pair<StateRef<VEquipmentType>, int>> initial_vehicle_equipment;
+	std::list<std::pair<StateRef<VAmmoType>, int>> initial_vehicle_ammo;
 	std::map<UString, int> initial_base_agent_equipment;
+	std::map<int, std::list<std::pair<StateRef<AgentType>, Vec2<int>>>> initial_aliens;
+
+	std::map<UString, EconomyInfo> economy;
 
 	StateRef<Organisation> player;
 	StateRef<Organisation> aliens;
+	StateRef<Organisation> government;
 	StateRef<Organisation> civilian;
 
 	StateRef<City> current_city;
 	StateRef<Base> current_base;
+
+	std::vector<EquipmentTemplate> agentEquipmentTemplates;
+
+	// Used to move events from battle to city and remember time
+
+	GameTime gameTimeBeforeBattle = GameTime(0);
+	UString missionLocationBattle;
+	UString eventFromBattleText;
+	GameEventType eventFromBattle;
 
 	// Used to generate unique names, an incrementing ID for each object type (keyed by StateObject
 	// prefix)
@@ -112,10 +134,6 @@ class GameState : public std::enable_shared_from_this<GameState>
 	GameState();
 	~GameState();
 
-	bool showTileOrigin = false;
-	bool showVehiclePath = false;
-	bool showSelectableBounds = false;
-
 	Xorshift128Plus<uint32_t> rng;
 
 	UString getPlayerBalance() const;
@@ -124,12 +142,13 @@ class GameState : public std::enable_shared_from_this<GameState>
 	StateRef<Organisation> getPlayer();
 	const StateRef<Organisation> &getAliens() const;
 	StateRef<Organisation> getAliens();
+	const StateRef<Organisation> &getGovernment() const;
+	StateRef<Organisation> getGovernment();
 	const StateRef<Organisation> &getCivilian() const;
 	StateRef<Organisation> getCivilian();
 
 	// The time from game start in ticks
 	GameTime gameTime;
-	GameTime gameTimeBeforeBattle = GameTime(0);
 
 	// high level api for loading game
 	bool loadGame(const UString &path);
@@ -151,9 +170,24 @@ class GameState : public std::enable_shared_from_this<GameState>
 	// that is serialized but not serialized itself). This should also be called on starting a new
 	// game after startGame()
 	void initState();
+	// Stub until we have actual mods
+	void applyMods();
 
+	void setCurrentCity(StateRef<City> city);
+
+	// Validates gamestate, sanity checks for all the possible fuck-ups
+	void validate();
+	void validateResearch();
+	void validateScenery();
+	void validateAgentEquipment();
+
+	void fillOrgStartingProperty();
 	// Fills out initial player property
 	void fillPlayerStartingProperty();
+
+	void updateEconomy();
+
+	void invasion();
 
 	// Returns true if we can go at max speed (IE push all update loops to 5 minute intervals -
 	// causes insta-completion of all routes etc.
@@ -162,13 +196,20 @@ class GameState : public std::enable_shared_from_this<GameState>
 	// - there are any projectiles on the current map
 	bool canTurbo() const;
 
-	// Update progresses one 'tick'
-	void update();
+	// Update progress
+	void update(unsigned int ticks);
 	// updateTurbo progresses 5 minutes at a time - can only be called if canTurbo() returns true.
 	// canTurbo() must be re-tested after each call to see if we should drop down to normal speed
 	// (e.g. enemy appeared, other user action required)
 	void updateTurbo();
+	// this moves non-aggressive vehicles around for some more ticks so that when time is paused
+	// after turbo city appears more alive
+	void updateAfterTurbo();
 
+	void updateBeforeBattle();
+	void upateAfterBattle();
+
+	void updateEndOfSecond();
 	void updateEndOfFiveMinutes();
 	void updateEndOfHour();
 	void updateEndOfDay();

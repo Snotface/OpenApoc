@@ -2,7 +2,7 @@
 #include "forms/form.h"
 #include "forms/graphicbutton.h"
 #include "forms/label.h"
-#include "forms/list.h"
+#include "forms/listbox.h"
 #include "forms/ui.h"
 #include "framework/data.h"
 #include "framework/event.h"
@@ -10,8 +10,8 @@
 #include "framework/keycodes.h"
 #include "game/state/gamestate.h"
 #include "game/state/message.h"
-#include "game/ui/battle/battleview.h"
-#include "game/ui/city/cityview.h"
+#include "game/ui/tileview/battleview.h"
+#include "game/ui/tileview/cityview.h"
 
 namespace OpenApoc
 {

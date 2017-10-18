@@ -3,15 +3,20 @@
 #include "forms/graphic.h"
 #include "forms/graphicbutton.h"
 #include "forms/label.h"
-#include "forms/list.h"
+#include "forms/listbox.h"
 #include "forms/ui.h"
+#include "framework/data.h"
 #include "framework/event.h"
 #include "framework/framework.h"
 #include "framework/keycodes.h"
-#include "game/state/base/base.h"
+#include "game/state/city/base.h"
+#include "game/state/city/research.h"
 #include "game/state/gamestate.h"
-#include "game/state/organisation.h"
-#include "game/state/research.h"
+#include "game/state/rules/aequipmenttype.h"
+#include "game/state/rules/city/vammotype.h"
+#include "game/state/rules/city/vehicletype.h"
+#include "game/state/rules/city/vequipmenttype.h"
+#include "game/state/shared/organisation.h"
 #include "game/ui/general/messagebox.h"
 #include "library/strings_format.h"
 
@@ -21,6 +26,8 @@ namespace OpenApoc
 ResearchSelect::ResearchSelect(sp<GameState> state, sp<Lab> lab)
     : Stage(), form(ui().getForm("researchselect")), lab(lab), state(state)
 {
+	progressImage = fw().data->loadImage(format(
+	    "PCK:xcom3/ufodata/newbut.pck:xcom3/ufodata/newbut.tab:%d:xcom3/ufodata/research.pcx", 63));
 }
 
 ResearchSelect::~ResearchSelect() = default;
@@ -60,7 +67,7 @@ void ResearchSelect::begin()
 	auto research_list = form->findControlTyped<ListBox>("LIST");
 	research_list->AlwaysEmitSelectionEvents = true;
 
-	research_list->addCallback(FormEventType::ListBoxChangeSelected, [this](Event *e) {
+	research_list->addCallback(FormEventType::ListBoxChangeSelected, [this](FormsEvent *e) {
 		LogInfo("Research selection change");
 		auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
 		auto topic = list->getSelectedData<ResearchTopic>();
@@ -102,26 +109,74 @@ void ResearchSelect::begin()
 		this->redrawResearchList();
 	});
 
-	research_list->addCallback(FormEventType::ListBoxChangeHover, [this](Event *e) {
+	research_list->addCallback(FormEventType::ListBoxChangeHover, [this](FormsEvent *e) {
 		LogInfo("Research display on hover change");
 		auto list = std::static_pointer_cast<ListBox>(e->forms().RaisedBy);
 		auto topic = list->getHoveredData<ResearchTopic>();
 		auto title = this->form->findControlTyped<Label>("TEXT_SELECTED_TITLE");
 		auto description = this->form->findControlTyped<Label>("TEXT_SELECTED_DESCRIPTION");
+		auto pic = this->form->findControlTyped<Graphic>("GRAPHIC_SELECTED");
 		if (topic)
 		{
 			title->setText(tr(topic->name));
 			description->setText(tr(topic->description));
+			if (topic->picture)
+			{
+				pic->setImage(topic->picture);
+			}
+			else
+			{
+				if (topic->type == ResearchTopic::Type::Engineering)
+				{
+					switch (topic->item_type)
+					{
+						case ResearchTopic::ItemType::VehicleEquipment:
+							pic->setImage(
+							    this->state->vehicle_equipment[topic->itemId]->equipscreen_sprite);
+							break;
+						case ResearchTopic::ItemType::VehicleEquipmentAmmo:
+							pic->setImage(nullptr);
+							break;
+						case ResearchTopic::ItemType::AgentEquipment:
+							pic->setImage(
+							    this->state->agent_equipment[topic->itemId]->equipscreen_sprite);
+							break;
+						case ResearchTopic::ItemType::Craft:
+							pic->setImage(
+							    this->state->vehicle_types[topic->itemId]->equip_icon_small);
+							break;
+					}
+				}
+				else
+				{
+					if (!topic->dependencies.items.agentItemsRequired.empty())
+					{
+						pic->setImage(topic->dependencies.items.agentItemsRequired.begin()
+						                  ->first->equipscreen_sprite);
+					}
+					else if (!topic->dependencies.items.vehicleItemsRequired.empty())
+					{
+						pic->setImage(topic->dependencies.items.vehicleItemsRequired.begin()
+						                  ->first->equipscreen_sprite);
+					}
+					else
+					{
+						pic->setImage(nullptr);
+					}
+				}
+			}
 		}
 		else
 		{
 			title->setText("");
 			description->setText("");
+			pic->setImage(nullptr);
 		}
+		this->redrawResearchList();
 	});
 
 	auto ok_button = form->findControlTyped<GraphicButton>("BUTTON_OK");
-	ok_button->addCallback(FormEventType::ButtonClick, [this](Event *) {
+	ok_button->addCallback(FormEventType::ButtonClick, [this](FormsEvent *) {
 		LogInfo("Research selection OK pressed, applying selection");
 		Lab::setResearch({state.get(), this->lab}, {state.get(), current_topic}, state);
 	});
@@ -155,7 +210,7 @@ void ResearchSelect::populateResearchList()
 		{
 			continue;
 		}
-		if (!t->dependencies.satisfied(state->current_base) && t->started == false)
+		if ((!t->dependencies.satisfied(state->current_base) && t->started == false) || t->hidden)
 		{
 			continue;
 		}
@@ -168,8 +223,8 @@ void ResearchSelect::populateResearchList()
 		control->Size = {544, 20};
 
 		auto topic_name = control->createChild<Label>((t->name), ui().getFont("smalfont"));
-		topic_name->Size = {200, 20};
-		topic_name->Location = {6, 0};
+		topic_name->Size = {200, 18};
+		topic_name->Location = {6, 2};
 
 		if (this->lab->type == ResearchTopic::Type::Engineering ||
 		    ((this->lab->type == ResearchTopic::Type::BioChem ||
@@ -183,23 +238,24 @@ void ResearchSelect::populateResearchList()
 				progress_text = tr("Complete");
 			auto progress_label =
 			    control->createChild<Label>(progress_text, ui().getFont("smalfont"));
-			progress_label->Size = {100, 20};
-			progress_label->Location = {234, 0};
+			progress_label->Size = {100, 18};
+			progress_label->Location = {234, 2};
 		}
 		else
 		{
 			float projectProgress =
 			    clamp((float)t->man_hours_progress / (float)t->man_hours, 0.0f, 1.0f);
 
+			auto progressBg = control->createChild<Graphic>(progressImage);
+			progressBg->Size = {102, 6};
+			progressBg->Location = {234, 6};
 			auto progressBar = control->createChild<Graphic>();
 			progressBar->Size = {101, 6};
-			progressBar->Location = {234, 4};
+			progressBar->Location = {234, 6};
 
 			auto progressImage = mksp<RGBImage>(progressBar->Size);
 			int redWidth = progressBar->Size.x * projectProgress;
 			{
-				// FIXME: For some reason, there's no border here like in the research sceen, so we
-				// have to make one manually, probably there's a better way
 				RGBImageLock l(progressImage);
 				for (int y = 0; y < 2; y++)
 				{
@@ -207,19 +263,7 @@ void ResearchSelect::populateResearchList()
 					{
 						if (x < redWidth)
 							l.set({x, y}, {255, 0, 0, 255});
-						else
-							l.set({x, y}, {77, 77, 77, 255});
 					}
-				}
-				l.set({0, 2}, {77, 77, 77, 255});
-				l.set({progressBar->Size.x - 1, 2}, {77, 77, 77, 255});
-				l.set({0, 3}, {130, 130, 130, 255});
-				l.set({progressBar->Size.x - 1, 3}, {130, 130, 130, 255});
-				l.set({0, 4}, {140, 140, 140, 255});
-				l.set({progressBar->Size.x - 1, 4}, {140, 140, 140, 255});
-				for (int x = 0; x < progressBar->Size.x; x++)
-				{
-					l.set({x, 5}, {205, 205, 205, 255});
 				}
 			}
 			progressBar->setImage(progressImage);
@@ -242,8 +286,8 @@ void ResearchSelect::populateResearchList()
 
 		auto skill_total_label =
 		    control->createChild<Label>(format("%d", skill_total), ui().getFont("smalfont"));
-		skill_total_label->Size = {50, 20};
-		skill_total_label->Location = {328, 0};
+		skill_total_label->Size = {50, 18};
+		skill_total_label->Location = {328, 2};
 		skill_total_label->TextHAlign = HorizontalAlignment::Right;
 
 		UString labSize;
@@ -261,8 +305,8 @@ void ResearchSelect::populateResearchList()
 		}
 
 		auto lab_size_label = control->createChild<Label>(labSize, ui().getFont("smalfont"));
-		lab_size_label->Size = {100, 20};
-		lab_size_label->Location = {439, 0};
+		lab_size_label->Size = {100, 18};
+		lab_size_label->Location = {439, 2};
 
 		control->setData(t);
 

@@ -2,22 +2,24 @@
 #include "forms/form.h"
 #include "forms/graphic.h"
 #include "forms/label.h"
-#include "forms/list.h"
+#include "forms/listbox.h"
 #include "forms/radiobutton.h"
 #include "forms/ui.h"
 #include "framework/apocresources/cursor.h"
+#include "framework/configfile.h"
 #include "framework/data.h"
 #include "framework/event.h"
 #include "framework/font.h"
 #include "framework/framework.h"
 #include "framework/keycodes.h"
 #include "framework/renderer.h"
-#include "game/state/base/base.h"
+#include "game/state/city/base.h"
+#include "game/state/city/building.h"
 #include "game/state/city/vehicle.h"
 #include "game/state/city/vequipment.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/vehicle_type.h"
-#include "game/ui/equipscreen.h"
+#include "game/state/rules/city/vehicletype.h"
+#include "game/ui/components/equipscreen.h"
 #include "library/strings_format.h"
 #include <cmath>
 
@@ -87,13 +89,41 @@ void VEquipScreen::begin()
 
 void VEquipScreen::pause() {}
 
-void VEquipScreen::resume() {}
+void VEquipScreen::resume()
+{
+	modifierLShift = false;
+	modifierRShift = false;
+}
 
 void VEquipScreen::finish() {}
 
 void VEquipScreen::eventOccurred(Event *e)
 {
 	form->eventOccured(e);
+
+	// Modifiers
+	if (e->type() == EVENT_KEY_DOWN)
+	{
+		if (e->keyboard().KeyCode == SDLK_RSHIFT)
+		{
+			modifierRShift = true;
+		}
+		if (e->keyboard().KeyCode == SDLK_LSHIFT)
+		{
+			modifierLShift = true;
+		}
+	}
+	if (e->type() == EVENT_KEY_UP)
+	{
+		if (e->keyboard().KeyCode == SDLK_RSHIFT)
+		{
+			modifierRShift = false;
+		}
+		if (e->keyboard().KeyCode == SDLK_LSHIFT)
+		{
+			modifierLShift = false;
+		}
+	}
 
 	if (e->type() == EVENT_KEY_DOWN)
 	{
@@ -183,12 +213,8 @@ void VEquipScreen::eventOccurred(Event *e)
 		// TODO: Show vehicle tooltip when hovering over it
 	}
 	// Find the base this vehicle is landed in
-	StateRef<Base> base;
-	for (auto &b : state->player_bases)
-	{
-		if (b.second->building == selected->currentlyLandedBuilding)
-			base = {state.get(), b.first};
-	}
+	StateRef<Base> base = selected->currentBuilding ? selected->currentBuilding->base : nullptr;
+
 	// Only allow removing equipment if we're in a base, otherwise it'll disappear
 	if (e->type() == EVENT_MOUSE_DOWN && base)
 	{
@@ -210,6 +236,13 @@ void VEquipScreen::eventOccurred(Event *e)
 			this->paperDoll->updateEquipment();
 			// FIXME: Return ammo to inventory
 			// FIXME: what happens if we don't have the stores to return?
+
+			// Immediate action: put to the base
+			if ((modifierLShift || modifierRShift) &&
+			    config().getBool("OpenApoc.NewFeature.AdvancedInventoryControls"))
+			{
+				this->draggedEquipment = nullptr;
+			}
 			return;
 		}
 
@@ -221,6 +254,22 @@ void VEquipScreen::eventOccurred(Event *e)
 				// Dragging an object doesn't (Yet) remove it from the inventory
 				this->draggedEquipment = pair.second;
 				this->draggedEquipmentOffset = pair.first.p0 - mousePos;
+
+				// Immediate action: try put on vehicle
+				if ((modifierLShift || modifierRShift) &&
+				    config().getBool("OpenApoc.NewFeature.AdvancedInventoryControls"))
+				{
+					if (this->selected->addEquipment(*state, this->draggedEquipment))
+					{
+						base->inventoryVehicleEquipment[draggedEquipment->id]--;
+						this->paperDoll->updateEquipment();
+						// FIXME: Add ammo to equipment
+					}
+					else
+					{
+						this->draggedEquipment = nullptr;
+					}
+				}
 				return;
 			}
 		}
@@ -269,7 +318,7 @@ void VEquipScreen::render()
 	// "reset unused entries" code around
 	std::vector<sp<Label>> statsLabels;
 	std::vector<sp<Label>> statsValues;
-	for (int i = 0; i < 9; i++)
+	for (int i = 0; i < 10; i++)
 	{
 		auto labelName = format("LABEL_%d", i + 1);
 		auto label = form->findControlTyped<Label>(labelName);
@@ -395,6 +444,16 @@ void VEquipScreen::render()
 
 				break;
 			}
+			case EquipmentSlotType::ArmorBody:
+			case EquipmentSlotType::ArmorHelmet:
+			case EquipmentSlotType::ArmorLeftHand:
+			case EquipmentSlotType::ArmorLegs:
+			case EquipmentSlotType::ArmorRightHand:
+			case EquipmentSlotType::LeftHand:
+			case EquipmentSlotType::RightHand:
+			case EquipmentSlotType::General:
+				LogError("Impossible equipment slot type on vehicle");
+				break;
 		}
 	}
 	else
@@ -443,6 +502,9 @@ void VEquipScreen::render()
 		statsLabels[8]->setText(tr("Cargo"));
 		statsValues[8]->setText(format("%d/%d", vehicle->getCargo(), vehicle->getMaxCargo()));
 
+		statsLabels[9]->setText(tr("Aliens"));
+		statsValues[9]->setText(format("%d/%d", vehicle->getBio(), vehicle->getMaxBio()));
+
 		iconGraphic->setImage(vehicle->type->equip_icon_small);
 	}
 	// Now draw the form, the actual equipment is then drawn on top
@@ -455,9 +517,11 @@ void VEquipScreen::render()
 	switch (this->selected->type->type)
 	{
 		case VehicleType::Type::Flying:
+		case VehicleType::Type::UFO:
 			allowedEquipmentUser = VEquipmentType::User::Air;
 			break;
-		case VehicleType::Type::Ground:
+		case VehicleType::Type::Road:
+		case VehicleType::Type::ATV:
 			allowedEquipmentUser = VEquipmentType::User::Ground;
 			break;
 		default:
@@ -465,12 +529,13 @@ void VEquipScreen::render()
 			    "Trying to draw equipment screen of unsupported vehicle type for vehicle \"%s\"",
 			    this->selected->name);
 			allowedEquipmentUser = VEquipmentType::User::Air;
+			break;
 	}
 	// Draw the inventory if the selected is in a building, and that is a base
 	StateRef<Base> base;
 	for (auto &b : state->player_bases)
 	{
-		if (b.second->building == selected->currentlyLandedBuilding)
+		if (b.second->building == selected->currentBuilding)
 			base = {state.get(), b.first};
 	}
 	if (base)

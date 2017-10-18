@@ -24,15 +24,24 @@
 		<member>initial_agents</member>
 		<member>initial_facilities</member>
 		<member>initial_agent_equipment</member>
+		<member>initial_vehicles</member>
+		<member>initial_vehicle_equipment</member>
+		<member>initial_vehicle_ammo</member>
 		<member>initial_base_agent_equipment</member>
+		<member>initial_aliens</member>
 		<member>current_city</member>
 		<member>current_base</member>
+		<member>agentEquipmentTemplates</member>
 		<member>objectIdCount</member>
+		<member type="Section">city_common_image_list</member>
+		<member type="Section">city_common_sample_list</member>
 		<member type="Section">battle_common_image_list</member>
 		<member type="Section">battle_common_sample_list</member>
+		<member type="Section">economy</member>
 		<member>player</member>
 		<member>aliens</member>
 		<member>civilian</member>
+		<member>government</member>
 		<member>rng</member>
 		<member>gameTime</member>
 		<member>gameTimeBeforeBattle</member>
@@ -49,6 +58,7 @@
 		<member>score</member>
 		<member>difficulty</member>
 		<member>firstDetection</member>
+		<member>nextInvasion</member>
 	</object>
 	<object external="true">
 		<name>BattleMapTileset</name>
@@ -120,7 +130,9 @@
 		<member>infiltrationSpeed</member>
 		<member>growthChance</member>
 		<member>growthOptions</member>
+		<member>growthInfiltration</member>
 		<member>detectionWeight</member>
+		<member>movementPercent</member>
 		<member>spreadHazardDamageType</member>
 		<member>spreadHazardMinPower</member>
 		<member>spreadHazardMaxPower</member>
@@ -128,6 +140,8 @@
 		<member>inventoryBackground</member>
 		<member>displayRank</member>
 		<member>missionObjective</member>
+		<member>liveSpeciesItem</member>
+		<member>deadSpeciesItem</member>
 		<member>score</member>
 		<member>walkSfx</member>
 		<member>crySfx</member>
@@ -175,6 +189,16 @@
 		<member>equipment</member>
 	</object>
 	<object>
+		<name>EquipmentTemplate</name>
+		<member>equipment</member>
+	</object>
+		<object>
+		<name>EquipmentTemplate::EquipmentTemplateEntry</name>
+		<member>pos</member>
+		<member>type</member>
+		<member>payloadType</member>
+	</object>
+	<object>
 		<name>EquipmentSet::WeaponData</name>
 		<member>weapon</member>
 		<member>clip</member>
@@ -203,10 +227,21 @@
 		<member>rank</member>
 		<member>trainingPhysicalTicksAccumulated</member>
 		<member>trainingPsiTicksAccumulated</member>
-		<member>home_base</member>
+		<member>recentlyHired</member>
+		<member>recentryTransferred</member>
+		<member>recentlyFought</member>
 		<member>owner</member>
+		<member>city</member>
+		<member>homeBuilding</member>
+		<member>currentBuilding</member>
+		<member>currentVehicle</member>
+		<member>position</member>
+		<member>goalPosition</member>
 		<member>assigned_to_lab</member>
 		<member>unit</member>
+		<member>isBrainsucker</member>
+		<member>missions</member>
+		<member>teleportTicksAccumulated</member>
 		<member>equipment</member>
 	</object>
 	<object>
@@ -248,7 +283,9 @@
 		<member>started</member>
 		<member>cost</member>
 		<member>item_type</member>
-		<member>item_produced</member>
+		<member>itemId</member>
+		<member>hidden</member>
+		<member>picture</member>
 	</object>
 	<object>
 		<name>ProjectDependencies</name>
@@ -257,7 +294,10 @@
 	</object>
 	<object>
 		<name>ItemDependency</name>
-		<member>items</member>
+		<member>agentItemsRequired</member>
+		<member>vehicleItemsRequired</member>
+		<member>agentItemsConsumed</member>
+		<member>vehicleItemsConsumed</member>
 	</object>
 	<object>
 		<name>UfopaediaCategory</name>
@@ -265,6 +305,27 @@
 		<member>description</member>
 		<member>background</member>
 		<member>entries</member>
+	</object>
+	<enum>
+		<name>Cargo::Type</name>
+		<value>Agent</value>
+		<value>Bio</value>
+		<value>VehicleAmmo</value>
+		<value>VehicleEquipment</value>
+	</enum>
+	<object>
+		<name>Cargo</name>
+		<member>type</member>
+		<member>id</member>
+		<member>count</member>
+		<member>divisor</member>
+		<member>space</member>
+		<member>cost</member>
+		<member>originalOwner</member>
+		<member>destination</member>
+		<member>expirationDate</member>
+		<member>warned</member>
+		<member>suppressEvents</member>
 	</object>
 	<object>
 		<name>Vehicle</name>
@@ -275,15 +336,33 @@
 		<member>altitude</member>
 		<member>missions</member>
 		<member>equipment</member>
+		<member>city</member>
 		<member>position</member>
+		<member>goalPosition</member>
+		<member>goalWaypoints</member>
 		<member>velocity</member>
 		<member>facing</member>
-		<member>city</member>
+		<member>goalFacing</member>
+		<member>angularVelocity</member>
+		<member>ticksToTurn</member>
+		<member>banking</member>
+		<member>direction</member>
+		<member>shadowDirection</member>
 		<member>health</member>
 		<member>shield</member>
 		<member>shieldRecharge</member>
+		<member>falling</member>
+		<member>crashed</member>
+		<member>sliding</member>
+		<member>cloakTicksAccumulated</member>
+		<member>teleportTicksAccumulated</member>
+		<member>ticksAutoActionAvailable</member>
 		<member>homeBuilding</member>
-		<member>currentlyLandedBuilding</member>
+		<member>currentBuilding</member>
+		<member>currentAgents</member>
+		<member>cargo</member>
+		<member>carriedVehicle</member>
+		<member>carriedByVehicle</member>
 	</object>
 	<object>
 		<name>VEquipment</name>
@@ -298,14 +377,29 @@
 		<name>VehicleMission</name>
 		<member>type</member>
 		<member>targetLocation</member>
+		<member>allowTeleporter</member>
 		<member>reRouteAttempts</member>
 		<member>pickNearest</member>
+		<member>patrolHome</member>
+		<member>pickedNearest</member>
 		<member>targetBuilding</member>
 		<member>targetVehicle</member>
 		<member>timeToSnooze</member>
 		<member>missionCounter</member>
 		<member>currentPlannedPath</member>
 		<member>subvert</member>
+		<member>attackCrashed</member>
+		<member>cancelled</member>
+	</object>
+	<object>
+		<name>AgentMission</name>
+		<member>type</member>
+		<member>allowTeleporter</member>
+		<member>allowTaxi</member>
+		<member>targetBuilding</member>
+		<member>timeToSnooze</member>
+		<member>currentPlannedPath</member>
+		<member>cancelled</member>
 	</object>
 	<object>
 		<name>BattleUnitMission</name>
@@ -314,6 +408,7 @@
 		<member>facingDelta</member>
 		<member>giveWayAttemptsRemaining</member>
 		<member>demandGiveWay</member>
+		<member>blockedByMovingUnit</member>
 		<member>costPaidUpFront</member>
 		<member>allowSkipNodes</member>
 		<member>targetFacing</member>
@@ -338,6 +433,7 @@
 		<name>Base</name>
 		<member>corridors</member>
 		<member>facilities</member>
+		<member>inventoryBioEquipment</member>
 		<member>inventoryAgentEquipment</member>
 		<member>inventoryVehicleEquipment</member>
 		<member>inventoryVehicleAmmo</member>
@@ -460,6 +556,8 @@
 		<member>turnEndAllowed</member>
 		<member>interruptQueue</member>
 		<member>interruptUnits</member>
+		<member>skirmish</member>
+		<member>relationshipsBeforeSkirmish</member>
 		<member>reinforcementsInterval</member>
 		<member>ticksUntilNextReinforcement</member>
 		<member>battleViewZLevel</member>
@@ -503,6 +601,7 @@
 		<name>BattleMapSectorTiles</name>
 		<member>losBlocks</member>
 		<member>loot_locations</member>
+		<member>guardianLocations</member>
 		<member>initial_grounds</member>
 		<member>initial_left_walls</member>
 		<member>initial_right_walls</member>
@@ -534,6 +633,14 @@
 		<member>burningDoodad</member>
 	</object>
 	<object>
+		<name>CityCommonImageList</name>
+		<member>strategyImages</member>
+		<member>projectileVoxelMap</member>
+		<member>agentIsometric</member>
+		<member>agentStrategic</member>
+		<member>portalStrategic</member>
+	</object>
+	<object>
 		<name>BattleCommonSampleList</name>
 		<member>gravlift</member>
 		<member>door</member>
@@ -547,6 +654,16 @@
 		<member>throwSounds</member>
 		<member>psiFailSounds</member>
 		<member>psiSuccessSounds</member>
+	</object>
+	<object>
+		<name>CityCommonSampleList</name>
+		<member>teleport</member>
+		<member>vehicleExplosion</member>
+		<member>sceneryExplosion</member>
+		<member>shieldHit</member>
+		<member>dimensionShiftIn</member>
+		<member>dimensionShiftOut</member>
+		<member>alertSounds</member>
 	</object>
 	<object external="true">
 		<name>BattleUnitAnimationPack</name>
@@ -730,6 +847,7 @@
 	</object>
 	<object>
 		<name>City</name>
+		<member>id</member>
 		<member>size</member>
 		<member type="Section">tile_types</member>
 		<member type="Section">initial_tiles</member>
@@ -738,6 +856,24 @@
 		<member type="Section">doodads</member>
 		<member type="Section">portals</member>
 		<member type="Section">projectiles</member>
+		<member>tileToRoadSegmentMap</member>
+		<member>roadSegments</member>
+		<member>researchUnlock</member>
+		<member>cityViewScreenCenter</member>
+		<member>cityViewPageIndex</member>
+		<member>cityViewSelectedVehicles</member>
+		<member>cityViewSelectedAgents</member>
+		<member>cityViewSelectedOrganisation</member>
+		<member>cityViewOrgButtonIndex</member>
+	</object>
+	<object>
+		<name>RoadSegment</name>
+		<member>connections</member>
+		<member>tilePosition</member>
+		<member>intact</member>
+		<member>tileIntact</member>
+		<member>middle</member>
+		<member>length</member>
 	</object>
 	<object>
 		<name>Projectile</name>
@@ -760,6 +896,8 @@
 		<member>tail_length</member>
 		<member>projectile_sprites</member>
 		<member>sprite_distance</member>
+		<member>manualFire</member>
+		<member>voxelMap</member>
 		<member>impactSfx</member>
 		<member>doodadType</member>
 		<member>damageType</member>
@@ -788,8 +926,12 @@
 		<member>type</member>
 		<member>initialPosition</member>
 		<member>currentPosition</member>
+		<member>ticksUntilCollapse</member>
+		<member>supportedParts</member>
+		<member>supportedBy</member>
 		<member>damaged</member>
 		<member>falling</member>
+		<member>fallingSpeed</member>
 		<member>destroyed</member>
 	</object>
 	<object>
@@ -797,22 +939,31 @@
 		<member>name</member>
 		<member>infiltrationSpeed</member>
 		<member>detectionWeight</member>
+		<member>ufopaedia_entry</member>
 	</object>
 	<object>
 		<name>Building</name>
 		<member>name</member>
+		<member>city</member>
 		<member>function</member>
 		<member>owner</member>
 		<member>bounds</member>
 		<member>base_layout</member>
+		<member>base</member>
 		<member>battle_map</member>
 		<member>preset_crew</member>
 		<member>current_crew</member>
-		<member>landingPadLocations</member>
-		<member>landed_vehicles</member>
+		<member>crewQuarters</member>
+		<member>currentVehicles</member>
+		<member>currentAgents</member>
+		<member>cargo</member>
 		<member>ticksDetectionTimeOut</member>
 		<member>ticksDetectionAttemptAccumulated</member>
 		<member>detected</member>
+		<member>timeOfLastAttackEvent</member>
+		<member>researchUnlock</member>
+		<member>accessTopic</member>
+		<member>victory</member>
 	</object>
 	<object>
 		<name>UFOIncursion</name>
@@ -837,6 +988,9 @@
 		<member>tile_type</member>
 		<member>road_type</member>
 		<member>walk_mode</member>
+		<member>connection</member>
+		<member>hill</member>
+		<member>tube</member>
 		<member>sprite</member>
 		<member>strategySprite</member>
 		<member>overlaySprite</member>
@@ -849,6 +1003,10 @@
 		<member>value</member>
 		<member>mass</member>
 		<member>strength</member>
+		<member>height</member>
+		<member>overlayHeight</member>
+		<member>basement</member>
+		<member>commonProperty</member>
 		<member>isHill</member>
 	</object>
 	<object>
@@ -892,6 +1050,7 @@
 		<member>name</member>
 		<member>icon_sprite</member>
 		<member>ignore_shield</member>
+		<member>non_violent</member>
 		<member>modifiers</member>
 		<member>explosive</member>
 		<member>explosionDoodad</member>
@@ -919,7 +1078,10 @@
 		<member>score</member>
 		<member>research_dependency</member>
 		<member>two_handed</member>
+		<member>bioStorage</member>
+		<member>bioRemains</member>
 		<member>launcher</member>
+		<member>artifact</member>
 		<member>body_sprite</member>
 		<member>damage_modifier</member>
 		<member>body_part</member>
@@ -971,6 +1133,7 @@
 		<member>guided</member>
 		<member>turn_rate</member>
 		<member>range</member>
+		<member>ttl</member>
 		<member>firing_arc_1</member>
 		<member>firing_arc_2</member>
 		<member>point_defence</member>
@@ -1007,6 +1170,38 @@
 		<member>sprite</member>
 		<member>dependency</member>
 		<member>ufopaedia_entry</member>
+		<member>sector</member>
+	</object>
+	<enum>
+		<name>Organisation::MissionPattern::Target</name>
+		<value>Owned</value>
+		<value>OwnedOrOther</value>
+		<value>Other</value>
+		<value>ArriveFromSpace</value>
+		<value>DepartToSpace</value>
+	</enum>
+	<enum>
+		<name>Organisation::Relation</name>
+		<value>Allied</value>
+		<value>Friendly</value>
+		<value>Neutral</value>
+		<value>Unfriendly</value>
+		<value>Hostile</value>
+	</enum>
+	<object>
+		<name>Organisation::Mission</name>
+		<member>next</member>
+		<member>pattern</member>
+	</object>
+	<object>
+		<name>Organisation::MissionPattern</name>
+		<member>minIntervalRepeat</member>
+		<member>maxIntervalRepeat</member>
+		<member>minAmount</member>
+		<member>maxAmount</member>
+		<member>allowedTypes</member>
+		<member>target</member>
+		<member>relation</member>
 	</object>
 	<object>
 		<name>Organisation</name>
@@ -1024,7 +1219,15 @@
 		<member>guard_types_human</member>
 		<member>guard_types_alien</member>
 		<member>loot</member>
+		<member>icon</member>
 		<member>current_relations</member>
+		<member>ufopaedia_entry</member>
+		<member>missions</member>
+		<member>vehiclePark</member>
+		<member>providesTransportationServices</member>
+		<member>minHireePool</member>
+		<member>maxHireePool</member>
+		<member>hirableTypes</member>
 	</object>
 	<object>
 		<name>VehicleType</name>
@@ -1049,7 +1252,7 @@
 		<member>equipment_screen</member>
 		<member>equip_icon_big</member>
 		<member>equip_icon_small</member>
-		<member>directional_strategy_sprites</member>
+		<member>mapIconType</member>
 		<member>directional_sprites</member>
 		<member>shadow_offset</member>
 		<member>directional_shadow_sprites</member>
@@ -1061,6 +1264,12 @@
 		<member>voxelMapsLOS</member>
 		<member>equipment_layout_slots</member>
 		<member>initial_equipment_list</member>
+		<member>ufopaedia_entry</member>
+		<member>provideFreightAgent</member>
+		<member>provideFreightCargo</member>
+		<member>provideFreightBio</member>
+		<member>canRescueCrashed</member>
+		<member>researchUnlock</member>
 	</object>
 	<object>
 		<name>UfopaediaEntry</name>
@@ -1116,8 +1325,9 @@
 	<enum>
 		<name>VehicleType::Type</name>
 		<value>Flying</value>
-		<value>Ground</value>
 		<value>UFO</value>
+		<value>Road</value>
+		<value>ATV</value>
 	</enum>
 	<enum>
 		<name>VehicleType::Direction</name>
@@ -1156,6 +1366,12 @@
 		<value>Right</value>
 	</enum>
 	<enum>
+		<name>VehicleType::MapIconType</name>
+		<value>Arrow</value>
+		<value>SmallCircle</value>
+		<value>LargeCircle</value>
+	</enum>
+	<enum>
 		<name>ResearchTopic::Type</name>
 		<value>BioChem</value>
 		<value>Physics</value>
@@ -1192,6 +1408,7 @@
 		<value>GotoLocation</value>
 		<value>GotoBuilding</value>
 		<value>FollowVehicle</value>
+		<value>RecoverVehicle</value>
 		<value>AttackVehicle</value>
 		<value>AttackBuilding</value>
 		<value>Snooze</value>
@@ -1201,6 +1418,18 @@
 		<value>Patrol</value>
 		<value>GotoPortal</value>
 		<value>InfiltrateSubvert</value>
+		<value>OfferService</value>
+		<value>Teleport</value>
+		<value>SelfDestruct</value>
+		<value>DepartToSpace</value>
+	</enum>
+	<enum>
+		<name>AgentMission::MissionType</name>
+		<value>GotoBuilding</value>
+		<value>AwaitPickup</value>
+		<value>RestartNextMission</value>
+		<value>Snooze</value>
+		<value>Teleport</value>
 	</enum>
 	<enum>
 		<name>BattleUnitMission::Type</name>
@@ -1238,6 +1467,8 @@
 		<value>East</value>
 		<value>South</value>
 		<value>West</value>
+		<value>Up</value>
+		<value>Down</value>
 	</enum>
 	<enum>
 		<name>Battle::Mode</name>
@@ -1399,7 +1630,6 @@
 		<name>ResearchDependency::Type</name>
 		<value>Any</value>
 		<value>All</value>
-		<value>Unused</value>
 	</enum>
 	<enum>
 		<name>UfopaediaEntry::Data</name>
@@ -1636,6 +1866,9 @@
 		<member>enemySpottedPrevious</member>
 		<member>attackerPosition</member>
 		<member>lastSeenEnemyPosition</member>
+		<member>flagEnemySpotted</member>
+		<member>flagLastSeenPosition</member>
+		<member>flagLastAttackerPosition</member>
 	</object>
 	<object external="true" full="true">
 		<name>UnitAIHardcore</name>
@@ -1659,5 +1892,15 @@
 		<member>updateTicksAccumulated</member>
 		<member>lastPosition</member>
 		<member>holder</member>
+	</object>
+	<object>
+		<name>EconomyInfo</name>
+		<member>weekAvailable</member>
+		<member>basePrice</member>
+		<member>minStock</member>
+		<member>maxStock</member>
+		<member>currentPrice</member>
+		<member>currentStock</member>
+		<member>lastStock</member>
 	</object>
 </openapoc_gamestate>

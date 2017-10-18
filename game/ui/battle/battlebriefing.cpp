@@ -8,12 +8,13 @@
 #include "framework/event.h"
 #include "framework/framework.h"
 #include "framework/keycodes.h"
-#include "game/state/battle/battlecommonimagelist.h"
+#include "game/state/city/base.h"
 #include "game/state/city/building.h"
 #include "game/state/gamestate.h"
+#include "game/state/rules/battle/battlecommonimagelist.h"
 #include "game/ui/battle/battleprestart.h"
-#include "game/ui/battle/battleview.h"
-#include "game/ui/city/cityview.h"
+#include "game/ui/tileview/battleview.h"
+#include "game/ui/tileview/cityview.h"
 #include <cmath>
 
 namespace OpenApoc
@@ -51,7 +52,17 @@ BattleBriefing::BattleBriefing(sp<GameState> state, StateRef<Organisation> targe
 	else
 	{
 		auto building = StateRef<Building>(&*state, location);
-		if (!isRaid && building->owner != state->getAliens())
+		if (building->base && building->owner == state->getPlayer())
+		{
+			menuform->findControlTyped<Graphic>("BRIEFING_IMAGE")
+			    ->setImage(fw().data->loadImage("xcom3/tacdata/brief4.pcx"));
+			bool lastBase = state->player_bases.size() == 1;
+			briefing = lastBase ? "You must lorem ipisum etc. (Here be briefing text) (Text: "
+			                      "Building Last Base Assault)"
+			                    : "You must lorem ipisum etc. (Here be briefing text) (Text: "
+			                      "Building Non-Last Base Assault)";
+		}
+		else if (!isRaid && building->owner != state->getAliens())
 		{
 			menuform->findControlTyped<Graphic>("BRIEFING_IMAGE")
 			    ->setImage(fw().data->loadImage("xcom3/tacdata/brief.pcx"));
@@ -60,17 +71,7 @@ BattleBriefing::BattleBriefing(sp<GameState> state, StateRef<Organisation> targe
 		}
 		else
 		{
-			if (building->owner == state->getPlayer())
-			{
-				menuform->findControlTyped<Graphic>("BRIEFING_IMAGE")
-				    ->setImage(fw().data->loadImage("xcom3/tacdata/brief4.pcx"));
-				bool lastBase = true;
-				briefing = lastBase ? "You must lorem ipisum etc. (Here be briefing text) (Text: "
-				                      "Building Last Base Assault)"
-				                    : "You must lorem ipisum etc. (Here be briefing text) (Text: "
-				                      "Building Base Assault)";
-			}
-			else if (building->owner != state->getAliens())
+			if (building->owner != state->getAliens())
 			{
 				menuform->findControlTyped<Graphic>("BRIEFING_IMAGE")
 				    ->setImage(fw().data->loadImage("xcom3/tacdata/brief2.pcx"));
@@ -130,11 +131,9 @@ BattleBriefing::BattleBriefing(sp<GameState> state, StateRef<Organisation> targe
 		}
 	}
 	menuform->findControlTyped<Label>("TEXT_BRIEFING")->setText(briefing);
-
-	// menuform->findControlTyped<Graphic>("BRIEFING_IMAGE")->setImage();
-	menuform->findControlTyped<Label>("TEXT_BRIEFING")
+	/*menuform->findControlTyped<Label>("TEXT_BRIEFING")
 	    ->setText("You must lorem ipisum etc. (Here be briefing text)");
-
+*/
 	menuform->findControlTyped<GraphicButton>("BUTTON_REAL_TIME")->setVisible(false);
 	menuform->findControlTyped<GraphicButton>("BUTTON_TURN_BASED")->setVisible(false);
 
@@ -166,12 +165,12 @@ void BattleBriefing::eventOccurred(Event *e)
 	menuform->eventOccured(e);
 	if (e->type() == EVENT_KEY_DOWN)
 	{
-		if (e->keyboard().KeyCode == SDLK_ESCAPE)
+		if (e->keyboard().KeyCode == SDLK_RETURN)
 		{
 			menuform->findControl("BUTTON_REAL_TIME")->click();
 			return;
 		}
-		if (e->keyboard().KeyCode == SDLK_RETURN)
+		if (e->keyboard().KeyCode == SDLK_SPACE)
 		{
 			menuform->findControl("BUTTON_TURN_BASED")->click();
 			return;

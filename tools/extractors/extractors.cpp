@@ -2,8 +2,8 @@
 #include "game/state/city/building.h"
 #include "game/state/city/city.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/scenery_tile_type.h"
-#include "game/state/tileview/tile.h"
+#include "game/state/rules/city/scenerytiletype.h"
+#include "game/state/tilemap/tilemap.h"
 
 namespace OpenApoc
 { // clang-format off
@@ -130,6 +130,37 @@ const std::map<OpenApoc::UString, std::set<int>> InitialGameStateExtractor::miss
 	{ "46contrl",{ 155,156,157,158} },
 	{ "47maint" ,{ 142,143,144,145} },
 	{ "48gate"  ,{ 71,73,74,75,76,77,78,79,80,81,82,83,84,85} },
+};
+
+const std::map<OpenApoc::UString, std::vector<int>> InitialGameStateExtractor::tubes = {
+	/*{ "CITYTILE_CITYMAP_63",{ 0,1,0,1 } },
+	{ "CITYTILE_CITYMAP_64",{ 1,0,1,0 } },
+	{ "CITYTILE_CITYMAP_65",{ 0,1,0,1 } },
+	{ "CITYTILE_CITYMAP_66",{ 1,0,1,0 } },
+	{ "CITYTILE_CITYMAP_67",{ 1,0,0,1 } },
+	{ "CITYTILE_CITYMAP_68",{ 0,1,1,0 } },
+	{ "CITYTILE_CITYMAP_69",{ 0,0,1,1 } },
+	{ "CITYTILE_CITYMAP_70",{ 1,1,0,0 } },
+	{ "CITYTILE_CITYMAP_71",{ 0,0,0,1 } },*/
+	{ "CITYTILE_CITYMAP_72",{ 1,0,1,0 } },
+	{ "CITYTILE_CITYMAP_73",{ 0,1,0,1 } },
+	{ "CITYTILE_CITYMAP_74",{ 0,0,0,0 } },
+	{ "CITYTILE_CITYMAP_75",{ 0,1,0,0 } },
+	{ "CITYTILE_CITYMAP_76",{ 1,0,0,0 } },
+	{ "CITYTILE_CITYMAP_77",{ 0,0,1,0 } },
+	{ "CITYTILE_CITYMAP_78",{ 0,0,0,1 } },
+	{ "CITYTILE_CITYMAP_79",{ 0,1,0,0 } },
+	{ "CITYTILE_CITYMAP_80",{ 1,0,0,0 } },
+	{ "CITYTILE_CITYMAP_81",{ 0,0,1,0 } },
+	{ "CITYTILE_CITYMAP_82",{ 0,0,0,1 } },
+	{ "CITYTILE_CITYMAP_83",{ 0,0,1,1 } },
+	{ "CITYTILE_CITYMAP_84",{ 1,1,0,0 } },
+	{ "CITYTILE_CITYMAP_85",{ 0,1,1,0 } },
+	{ "CITYTILE_CITYMAP_86",{ 1,0,0,1 } },
+	{ "CITYTILE_CITYMAP_87",{ 0,1,0,1 } },
+	{ "CITYTILE_CITYMAP_88",{ 1,1,1,1 } },
+	{ "CITYTILE_CITYMAP_89",{ 1,1,1,1 } },
+	{ "CITYTILE_CITYMAP_90",{ 1,1,1,1 } },
 };
 
 const std::map<OpenApoc::UString, OpenApoc::UString> InitialGameStateExtractor::unitImagePackPaths = {
@@ -298,10 +329,14 @@ void InitialGameStateExtractor::extractCommon(GameState &state) const
 	this->extractAgentEquipment(state);
 	this->extractDoodads(state);
 	this->extractBuildingFunctions(state);
+	this->extractEconomy(state);
 
 	// The alien map doesn't change
 	UString alienMapId = City::getPrefix() + "ALIEN";
 	state.cities[alienMapId] = std::make_shared<City>();
+	state.cities[alienMapId]->id = alienMapId;
+	state.cities[alienMapId]->researchUnlock.emplace_back(&state,
+	                                                      "RESEARCH_UNLOCK_ALIEN_DIMENSION");
 	this->extractBuildings(state, "albuild", state.cities[alienMapId], true);
 	this->extractCityMap(state, "alienmap", "ALIENMAP_", state.cities[alienMapId]);
 	this->extractCityScenery(state, "ALIENMAP_", "alienmap", "alien", "stratmap", "loftemps",
@@ -309,6 +344,7 @@ void InitialGameStateExtractor::extractCommon(GameState &state) const
 
 	this->extractBattlescapeMap(state, battleMapPaths);
 	this->extractSharedBattleResources(state);
+	this->extractSharedCityResources(state);
 }
 
 void InitialGameStateExtractor::extract(GameState &state, Difficulty difficulty) const
@@ -326,6 +362,9 @@ void InitialGameStateExtractor::extract(GameState &state, Difficulty difficulty)
 	UString humanMapId = City::getPrefix() + "HUMAN";
 
 	state.cities[humanMapId] = std::make_shared<City>();
+	state.cities[humanMapId]->id = humanMapId;
+	state.cities[humanMapId]->researchUnlock.emplace_back(&state,
+	                                                      "RESEARCH_UNLOCK_DIMENSION_GATES");
 
 	this->extractBuildings(state, humanMapNames[difficulty], state.cities[humanMapId]);
 

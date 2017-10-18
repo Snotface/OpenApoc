@@ -2,7 +2,7 @@
 
 #include "framework/logger.h"
 #include "framework/stage.h"
-#include "game/state/tileview/tile.h"
+#include "game/state/tilemap/tilemap.h"
 #include "library/colour.h"
 #include "library/sp.h"
 #include "library/vec.h"
@@ -20,15 +20,30 @@ class Palette;
 class TileView : public Stage, public TileTransform
 {
   protected:
+	// Formula: FPS / DESIRED_ANIMATIONS_PER_SECOND
+
+	static const int SELECTION_FRAME_ANIMATION_DELAY = 60 / 5;
+	static const int PORTAL_FRAME_ANIMATION_DELAY = 60 / 15;
+	// How many pixels from edge trigger scroll
+	static const int MOUSE_SCROLL_MARGIN = 1;
+
+  protected:
 	TileMap &map;
 	Vec3<int> isoTileSize;
 	Vec2<int> stratTileSize;
 	TileViewMode viewMode;
 
-	bool scrollUp;
-	bool scrollDown;
-	bool scrollLeft;
-	bool scrollRight;
+	bool scrollUpKB;
+	bool scrollDownKB;
+	bool scrollLeftKB;
+	bool scrollRightKB;
+
+	bool scrollUpM;
+	bool scrollDownM;
+	bool scrollLeftM;
+	bool scrollRightM;
+
+	bool autoScroll = false;
 
 	Vec2<int> dpySize;
 

@@ -6,14 +6,14 @@
 #include "framework/framework.h"
 #include "framework/keycodes.h"
 #include "framework/renderer.h"
-#include "game/state/city/baselayout.h"
 #include "game/state/city/building.h"
 #include "game/state/city/city.h"
 #include "game/state/city/scenery.h"
 #include "game/state/gamestate.h"
-#include "game/state/tileview/collision.h"
-#include "game/state/tileview/tile.h"
-#include "game/state/tileview/tileobject_scenery.h"
+#include "game/state/rules/city/baselayout.h"
+#include "game/state/tilemap/collision.h"
+#include "game/state/tilemap/tilemap.h"
+#include "game/state/tilemap/tileobject_scenery.h"
 #include "game/ui/city/basebuyscreen.h"
 
 namespace OpenApoc
@@ -24,7 +24,8 @@ static const Colour PLAYER_BASE_AVAILABLE{160, 236, 252};
 
 BaseSelectScreen::BaseSelectScreen(sp<GameState> state, Vec3<float> centerPos)
     : CityTileView(*state->current_city->map, Vec3<int>{TILE_X_CITY, TILE_Y_CITY, TILE_Z_CITY},
-                   Vec2<int>{STRAT_TILE_X, STRAT_TILE_Y}, TileViewMode::Strategy, *state),
+                   Vec2<int>{STRAT_TILE_X, STRAT_TILE_Y}, TileViewMode::Strategy,
+                   state->current_city->cityViewScreenCenter, *state),
       menuform(ui().getForm("city/baseselect")), state(state), counter(0)
 {
 	this->centerPos = centerPos;
@@ -88,7 +89,7 @@ void BaseSelectScreen::eventOccurred(Event *e)
 					auto building = scenery->building;
 					if (building)
 					{
-						if (building->base_layout && building->owner.id == "ORG_GOVERNMENT")
+						if (building->base_layout && building->owner == state->getGovernment())
 						{
 							fw().stageQueueCommand(
 							    {StageCmd::Command::PUSH, mksp<BaseBuyScreen>(state, building)});
@@ -108,6 +109,7 @@ void BaseSelectScreen::update()
 {
 	menuform->update();
 	counter = (counter + 1) % COUNTER_MAX;
+	CityTileView::update();
 }
 
 void BaseSelectScreen::render()
@@ -135,7 +137,7 @@ void BaseSelectScreen::render()
 			{
 				borderColour = PLAYER_BASE_OWNED;
 			}
-			else if (building->owner.id == "ORG_GOVERNMENT")
+			else if (building->owner == state->getGovernment())
 			{
 				borderColour = PLAYER_BASE_AVAILABLE;
 			}

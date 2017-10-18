@@ -25,7 +25,7 @@ class BattlePreStart : public Stage
 	const int ROW_HEADER = 90;
 	const Vec2<int> TOP_LEFT;
 
-	class AgentControl
+	class AgentIcon
 	{
 	  public:
 		sp<Agent> agent;
@@ -33,9 +33,10 @@ class BattlePreStart : public Stage
 		sp<Control> selectedControl;
 
 		void setLocation(Vec2<int> pos);
+		void update();
 
-		AgentControl() = default;
-		AgentControl(sp<Agent> agent, sp<Control> normalControl, sp<Control> selectedControl);
+		AgentIcon() = default;
+		AgentIcon(sp<Agent> agent, sp<Control> normalControl, sp<Control> selectedControl);
 	};
 
 	sp<Form> menuform;
@@ -43,17 +44,12 @@ class BattlePreStart : public Stage
 	sp<GameState> state;
 
 	void displayAgent(sp<Agent> agent);
-	sp<Control> createAgentControl(StateRef<Agent> agent, bool selected);
-	sp<Image> healthImage;
-	sp<Image> shieldImage;
-	std::vector<sp<Image>> unitRanks;
 	std::vector<sp<Image>> bigUnitRanks;
-	std::vector<sp<Image>> unitSelect;
 
-	std::set<sp<AgentControl>> agents;
-	sp<AgentControl> selectedAgent;
+	std::set<sp<AgentIcon>> agents;
+	sp<AgentIcon> selectedAgent;
 	sp<Agent> lastSelectedAgent;
-	sp<AgentControl> draggedAgent;
+	sp<AgentIcon> draggedAgent;
 	Vec2<int> draggedAgentOffset;
 	bool draggedMoved = false;
 	int draggedOrigin = 0;

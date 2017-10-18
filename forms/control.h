@@ -52,6 +52,7 @@ class Control : public std::enable_shared_from_this<Control>
 	virtual bool isFocused() const;
 
 	void resolveLocation();
+	bool isPointInsideControlBounds(int x, int y);
 
 	// Loads control and all subcontrols from xml
 	void configureFromXml(pugi::xml_node *node);
@@ -59,8 +60,6 @@ class Control : public std::enable_shared_from_this<Control>
 	virtual void configureSelfFromXml(pugi::xml_node *node);
 
 	sp<Control> getRootControl();
-
-	void copyControlData(sp<Control> CopyOf);
 
 	void pushFormEvent(FormEventType type, Event *parentEvent);
 
@@ -84,6 +83,8 @@ class Control : public std::enable_shared_from_this<Control>
 	std::vector<sp<Control>> Controls;
 
 	std::map<UString, sp<RadioButtonGroup>> radiogroups;
+
+	void copyControlData(sp<Control> CopyOf);
 
 	Control(bool takesFocus = true);
 	virtual ~Control();

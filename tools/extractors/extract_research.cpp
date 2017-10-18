@@ -1,6 +1,6 @@
 #include "framework/framework.h"
-#include "game/state/city/baselayout.h"
 #include "game/state/gamestate.h"
+#include "game/state/rules/city/baselayout.h"
 #include "tools/extractors/common/ufo2p.h"
 #include "tools/extractors/extractors.h"
 
@@ -66,6 +66,10 @@ void InitialGameStateExtractor::extractResearch(GameState &state) const
 		}
 
 		r->dependencies.research.push_back(dependency);
+
+		/*ItemDependency itemdep;
+		itemdep.agentItemsRequired[{&state, "AEQUIPMENTTYPE_PSICLONE"}] = 1;
+		r->dependencies.items.push_back(itemdep);*/
 
 		r->score = rdata.score;
 

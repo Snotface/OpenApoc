@@ -1,22 +1,34 @@
 #include "game/state/battle/battleunitmission.h"
 #include "framework/framework.h"
 #include "framework/sound.h"
-#include "game/state/aequipment.h"
-#include "game/state/battle/battlecommonsamplelist.h"
 #include "game/state/battle/battleitem.h"
 #include "game/state/battle/battleunit.h"
 #include "game/state/gameevent.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/aequipment_type.h"
-#include "game/state/tileview/tileobject_battleitem.h"
-#include "game/state/tileview/tileobject_battlemappart.h"
-#include "game/state/tileview/tileobject_battleunit.h"
+#include "game/state/rules/aequipmenttype.h"
+#include "game/state/rules/battle/battlecommonsamplelist.h"
+#include "game/state/shared/aequipment.h"
+#include "game/state/tilemap/tileobject_battleitem.h"
+#include "game/state/tilemap/tileobject_battlemappart.h"
+#include "game/state/tilemap/tileobject_battleunit.h"
 #include "library/strings_format.h"
 #include <glm/glm.hpp>
 #include <glm/gtx/vector_angle.hpp>
 
 namespace OpenApoc
 {
+namespace
+{
+static const std::map<Vec2<int>, int> facing_dir_map = {{{0, -1}, 0}, {{1, -1}, 1}, {{1, 0}, 2},
+                                                        {{1, 1}, 3},  {{0, 1}, 4},  {{-1, 1}, 5},
+                                                        {{-1, 0}, 6}, {{-1, -1}, 7}};
+static const std::map<int, Vec2<int>> dir_facing_map = {{0, {0, -1}}, {1, {1, -1}}, {2, {1, 0}},
+                                                        {3, {1, 1}},  {4, {0, 1}},  {5, {-1, 1}},
+                                                        {6, {-1, 0}}, {7, {-1, -1}}};
+static const std::list<Vec3<float>> angles = {
+    {0, -1, 0}, {1, -1, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}, {-1, 1, 0}, {-1, 0, 0}, {-1, -1, 0},
+};
+}
 
 BattleUnitTileHelper::BattleUnitTileHelper(TileMap &map, BattleUnitType type, bool allowJumping)
     : BattleUnitTileHelper(
@@ -29,9 +41,9 @@ BattleUnitTileHelper::BattleUnitTileHelper(TileMap &map, BattleUnitType type, bo
 
 BattleUnitTileHelper::BattleUnitTileHelper(TileMap &map, bool large, bool flying, bool allowJumping,
                                            int maxHeight, sp<TileObjectBattleUnit> tileObject)
-    : map(map), large(large), flying(flying), maxHeight(maxHeight), tileObject(tileObject)
+    : map(map), large(large), flying(flying), maxHeight(maxHeight), tileObject(tileObject),
+      canJump(allowJumping && !flying)
 {
-	this->allowJumping = allowJumping && !flying;
 }
 
 BattleUnitTileHelper::BattleUnitTileHelper(TileMap &map, BattleUnit &u)
@@ -104,17 +116,18 @@ BattleUnitType BattleUnitTileHelper::getType() const
 }
 
 bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool ignoreStaticUnits,
-                                        bool ignoreAllUnits) const
+                                        bool ignoreMovingUnits, bool ignoreAllUnits) const
 {
 	float nothing;
 	bool none1;
 	bool none2;
-	return canEnterTile(from, to, false, none1, nothing, none2, ignoreStaticUnits, ignoreAllUnits);
+	return canEnterTile(from, to, false, none1, nothing, none2, ignoreStaticUnits,
+	                    ignoreMovingUnits, ignoreAllUnits);
 }
 
 bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping, bool &jumped,
                                         float &cost, bool &doorInTheWay, bool ignoreStaticUnits,
-                                        bool ignoreAllUnits) const
+                                        bool ignoreMovingUnits, bool ignoreAllUnits) const
 {
 	int costInt = 0;
 	doorInTheWay = false;
@@ -149,7 +162,7 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 	}
 
 	// Large units can't jump, also can't jump to different z
-	allowJumping = allowJumping && !large && toPos.z == fromPos.z;
+	allowJumping = allowJumping && canJump && !large && toPos.z == fromPos.z;
 
 	// If tiles not adjacent -> see if we're checking a jump
 	if (std::abs(toPos.x - fromPos.x) > 1 || std::abs(toPos.y - fromPos.y) > 1 ||
@@ -165,9 +178,9 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 			}
 			auto middle = map.getTile(fromPos + (toPos - fromPos) / 2);
 			if (canEnterTile(from, middle, true, jumped, cost, doorInTheWay, ignoreStaticUnits,
-			                 ignoreAllUnits) &&
+			                 ignoreMovingUnits, ignoreAllUnits) &&
 			    jumped && canEnterTile(middle, to, false, jumped, cost, doorInTheWay,
-			                           ignoreStaticUnits, ignoreAllUnits))
+			                           ignoreStaticUnits, ignoreMovingUnits, ignoreAllUnits))
 			{
 				return true;
 			}
@@ -203,7 +216,7 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 	// Therefore, I think it's better to do it all here
 	// Plus, we will re-use some of the tiles we got from the map later down the line
 
-	// STEP 01: Check if "to" is passable (large)
+	// STEP 01: Check if "to" is passable [large]
 	if (large)
 	{
 		// Can we fit?
@@ -246,21 +259,28 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 			// static units,
 			// because they don't know how to give way, and therefore are considered permanent
 			// obstacles
-			if (to->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (to->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject, ignoreStaticUnits))
 				return false;
-			if (toX1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (toX1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+			                           ignoreStaticUnits))
 				return false;
-			if (toY1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (toY1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+			                           ignoreStaticUnits))
 				return false;
-			if (toXY1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (toXY1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+			                            ignoreStaticUnits))
 				return false;
-			if (toZ1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (toZ1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+			                           ignoreStaticUnits))
 				return false;
-			if (toXZ1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (toXZ1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+			                            ignoreStaticUnits))
 				return false;
-			if (toYZ1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (toYZ1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+			                            ignoreStaticUnits))
 				return false;
-			if (toXYZ1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+			if (toXYZ1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+			                             ignoreStaticUnits))
 				return false;
 		}
 		// Movement cost into the tiles
@@ -290,7 +310,7 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 		doorInTheWay = doorInTheWay || toXZ1->closedDoorRight;
 		doorInTheWay = doorInTheWay || toYZ1->closedDoorLeft;
 	}
-	// STEP 01: Check if "to" is passable (small)
+	// STEP 01: Check if "to" is passable [small]
 	else
 	{
 		// Check that no static unit occupies this tile
@@ -299,12 +319,12 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 		// because they don't know how to give way, and therefore are considered permanent
 		// obstacles
 		if (!ignoreAllUnits &&
-		    to->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits))
+		    to->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject, ignoreStaticUnits))
 			return false;
 		// Movement cost into the tiles
 		costInt = to->movementCostIn;
 	}
-	// STEP 01: Failure condition
+	// STEP 01: [Failure condition]
 	if (costInt == 255)
 	{
 		return false;
@@ -548,11 +568,11 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 					return false;
 				}
 				if (!ignoreAllUnits &&
-				    (bottomLeftZ0->getUnitIfPresent(true, true, true, tileObject,
+				    (bottomLeftZ0->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
 				                                    ignoreStaticUnits) ||
-				     rightTopZ0->getUnitIfPresent(true, true, true, tileObject,
+				     rightTopZ0->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
 				                                  ignoreStaticUnits) ||
-				     bottomLeftZ1->getUnitIfPresent(true, true, true, tileObject,
+				     bottomLeftZ1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
 				                                    ignoreStaticUnits) ||
 				     rightTopZ1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits)))
 				{
@@ -671,10 +691,12 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 					return false;
 				}
 				if (!ignoreAllUnits &&
-				    (topLeftZ0->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits) ||
-				     bottomRightZ0->getUnitIfPresent(true, true, true, tileObject,
+				    (topLeftZ0->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+				                                 ignoreStaticUnits) ||
+				     bottomRightZ0->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
 				                                     ignoreStaticUnits) ||
-				     topLeftZ1->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits) ||
+				     topLeftZ1->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+				                                 ignoreStaticUnits) ||
 				     bottomRightZ1->getUnitIfPresent(true, true, true, tileObject,
 				                                     ignoreStaticUnits)))
 				{
@@ -885,9 +907,10 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 					return false;
 				}
 				if (!ignoreAllUnits &&
-				    (bottomLeft->getUnitIfPresent(true, true, true, tileObject,
+				    (bottomLeft->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
 				                                  ignoreStaticUnits) ||
-				     topRight->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits)))
+				     topRight->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+				                                ignoreStaticUnits)))
 				{
 					return false;
 				}
@@ -901,8 +924,9 @@ bool BattleUnitTileHelper::canEnterTile(Tile *from, Tile *to, bool allowJumping,
 					return false;
 				}
 				if (!ignoreAllUnits &&
-				    (topLeft->getUnitIfPresent(true, true, true, tileObject, ignoreStaticUnits) ||
-				     bottomRight->getUnitIfPresent(true, true, true, tileObject,
+				    (topLeft->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
+				                               ignoreStaticUnits) ||
+				     bottomRight->getUnitIfPresent(true, true, ignoreMovingUnits, tileObject,
 				                                   ignoreStaticUnits)))
 				{
 					return false;
@@ -1115,10 +1139,6 @@ BattleUnitMission *BattleUnitMission::dropItem(BattleUnit &, sp<AEquipment> item
 
 int BattleUnitMission::getFacingDelta(Vec2<int> curFacing, Vec2<int> tarFacing)
 {
-	static const std::map<Vec2<int>, int> facing_dir_map = {
-	    {{0, -1}, 0}, {{1, -1}, 1}, {{1, 0}, 2},  {{1, 1}, 3},
-	    {{0, 1}, 4},  {{-1, 1}, 5}, {{-1, 0}, 6}, {{-1, -1}, 7}};
-
 	int curFac = facing_dir_map.at(curFacing);
 	int tarFac = facing_dir_map.at(tarFacing);
 	int result = curFac - tarFac;
@@ -1137,13 +1157,6 @@ Vec2<int> BattleUnitMission::getFacing(BattleUnit &u, Vec3<int> to, int facingDe
 Vec2<int> BattleUnitMission::getFacingStep(BattleUnit &u, Vec2<int> targetFacing, int facingDelta)
 {
 	Vec2<int> dest = u.facing;
-
-	static const std::map<Vec2<int>, int> facing_dir_map = {
-	    {{0, -1}, 0}, {{1, -1}, 1}, {{1, 0}, 2},  {{1, 1}, 3},
-	    {{0, 1}, 4},  {{-1, 1}, 5}, {{-1, 0}, 6}, {{-1, -1}, 7}};
-	static const std::map<int, Vec2<int>> dir_facing_map = {
-	    {0, {0, -1}}, {1, {1, -1}}, {2, {1, 0}},  {3, {1, 1}},
-	    {4, {0, 1}},  {5, {-1, 1}}, {6, {-1, 0}}, {7, {-1, -1}}};
 
 	// Turn
 	int curFacing = facing_dir_map.at(u.facing);
@@ -1182,17 +1195,6 @@ Vec2<int> BattleUnitMission::getFacingStep(BattleUnit &u, Vec2<int> targetFacing
 Vec2<int> BattleUnitMission::getFacing(BattleUnit &u, Vec3<float> from, Vec3<float> to,
                                        int facingDelta)
 {
-	static const std::map<Vec2<int>, int> facing_dir_map = {
-	    {{0, -1}, 0}, {{1, -1}, 1}, {{1, 0}, 2},  {{1, 1}, 3},
-	    {{0, 1}, 4},  {{-1, 1}, 5}, {{-1, 0}, 6}, {{-1, -1}, 7}};
-	static const std::map<int, Vec2<int>> dir_facing_map = {
-	    {0, {0, -1}}, {1, {1, -1}}, {2, {1, 0}},  {3, {1, 1}},
-	    {4, {0, 1}},  {5, {-1, 1}}, {6, {-1, 0}}, {7, {-1, -1}}};
-	static const std::list<Vec3<float>> angles = {
-	    {0, -1, 0}, {1, -1, 0}, {1, 0, 0},  {1, 1, 0},
-	    {0, 1, 0},  {-1, 1, 0}, {-1, 0, 0}, {-1, -1, 0},
-	};
-
 	float closestAngle = FLT_MAX;
 	Vec3<int> closestVector = {0, 0, 0};
 	Vec3<float> targetFacing = (Vec3<float>)(to - from);
@@ -1287,19 +1289,20 @@ BattleUnitMission *BattleUnitMission::brainsuck(BattleUnit &u, StateRef<BattleUn
 	auto *mission = new BattleUnitMission();
 	mission->type = Type::Brainsuck;
 	mission->targetUnit = target;
-	mission->targetBodyState = u.target_body_state;
-	mission->targetFacing = u.goalFacing;
+	mission->targetBodyState = BodyState::Jumping;
+	mission->targetFacing = u.facing;
 	mission->facingDelta = facingDelta;
 	return mission;
 }
 
-BattleUnitMission *BattleUnitMission::jump(BattleUnit &u, Vec3<float> target, BodyState state)
+BattleUnitMission *BattleUnitMission::jump(BattleUnit &u, Vec3<float> target, BodyState state,
+                                           bool requireFacing)
 {
 	auto *mission = new BattleUnitMission();
 	mission->type = Type::Jump;
 	mission->jumpTarget = target;
-	mission->targetFacing = getFacing(u, target);
-	mission->requireGoal = true;
+	mission->targetFacing = requireFacing ? getFacing(u, target) : u.goalFacing;
+	mission->requireGoal = requireFacing;
 	mission->targetBodyState = state;
 	return mission;
 }
@@ -1674,7 +1677,7 @@ void BattleUnitMission::update(GameState &state, BattleUnit &u, unsigned int tic
 				{
 					targetUnit->sendAgentEvent(state, GameEventType::AgentBrainsucked, true);
 					// Extra score penalty for being brainsucked
-					if (state.getPlayer() == targetUnit->agent->owner)
+					if (targetUnit->agent->owner == state.getPlayer())
 					{
 						state.current_battle->score.casualtyPenalty -=
 						    targetUnit->agent->type->score;
@@ -1892,7 +1895,7 @@ void BattleUnitMission::start(GameState &state, BattleUnit &u)
 			targetFacing = u.goalFacing;
 
 			// If we have already tried to use this mission, see if path is still valid
-			if (currentPlannedPath.size() > 0)
+			if (!currentPlannedPath.empty())
 			{
 				auto t = u.tileObject->getOwningTile();
 				auto pos = *currentPlannedPath.begin();
@@ -1915,7 +1918,7 @@ void BattleUnitMission::start(GameState &state, BattleUnit &u)
 					currentPlannedPath.clear();
 				}
 			}
-			if (currentPlannedPath.size() == 0)
+			if (currentPlannedPath.empty())
 			{
 				this->setPathTo(state, u, targetLocation);
 			}
@@ -1935,6 +1938,10 @@ void BattleUnitMission::start(GameState &state, BattleUnit &u)
 			}
 			return;
 		case Type::Jump:
+			if (!requireGoal)
+			{
+				u.setFacing(state, u.goalFacing);
+			}
 			cancelled = u.isLarge() || !u.canLaunch(jumpTarget);
 			return;
 		case Type::ChangeBodyState:
@@ -2040,7 +2047,8 @@ void BattleUnitMission::setPathTo(GameState &state, BattleUnit &u, Vec3<int> tar
 		}
 
 		auto path = state.current_battle->findShortestPath(
-		    u.goalPosition, target, BattleUnitTileHelper{map, u}, approachOnly, demandGiveWay);
+		    u.goalPosition, target, BattleUnitTileHelper{map, u}, approachOnly, demandGiveWay,
+		    !blockedByMovingUnit);
 
 		// Always start with the current position
 		this->currentPlannedPath.push_back(u.goalPosition);
@@ -2256,6 +2264,7 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 			currentPlannedPath.clear();
 			demandGiveWay = false;
 			giveWayAttemptsRemaining = 1;
+			blockedByMovingUnit = !blockingUnit->isStatic();
 			u.addMission(state, Type::RestartNextMission);
 			return false;
 		}
@@ -2314,7 +2323,7 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 		return false;
 	}
 
-	// Spend stamina.  As per Mell from forums it takes:
+	// Spend stamina TB.  As per Mell from forums it takes:
 	// - 0.6 vanilla stamina to run regardless of diagonal or not
 	// - 0.85 vanilla stamina to go prone regradless of diagonal or not
 	if (!realTime)
@@ -2363,6 +2372,7 @@ bool BattleUnitMission::advanceAlongPath(GameState &state, BattleUnit &u, Vec3<f
 
 bool BattleUnitMission::advanceBrainsucker(GameState &state, BattleUnit &u, Vec3<float> &dest)
 {
+	std::ignore = state;
 	dest = targetUnit->getMuzzleLocation();
 	targetFacing =
 	    getFacing(u, Vec3<float>{0.0f, 0.0f, 0.0f},
@@ -2402,7 +2412,7 @@ bool BattleUnitMission::advanceFacing(GameState &state, BattleUnit &u, Vec2<int>
 	// If throwing then pay up front so that we can't turn for free
 	if (targetBodyState == BodyState::Throwing)
 	{
-		int cost = getBodyStateChangeCost(u, u.current_body_state, targetBodyState);
+		int cost = u.getBodyStateChangeCost(u.current_body_state, targetBodyState);
 		if (!spendAgentTUs(state, u, cost, true, true, true))
 		{
 			return false;
@@ -2413,7 +2423,7 @@ bool BattleUnitMission::advanceFacing(GameState &state, BattleUnit &u, Vec2<int>
 	dest = getFacingStep(u, targetFacing);
 
 	// Calculate and spend cost
-	int cost = freeTurn ? 0 : getTurnCost(u);
+	int cost = freeTurn ? 0 : u.getTurnCost();
 	if (!spendAgentTUs(state, u, cost, true))
 	{
 		return false;
@@ -2473,7 +2483,7 @@ bool BattleUnitMission::advanceBodyState(GameState &state, BattleUnit &u, BodySt
 
 	// Cost to reach goal is free
 	int cost =
-	    type == Type::ReachGoal ? 0 : getBodyStateChangeCost(u, u.target_body_state, targetState);
+	    type == Type::ReachGoal ? 0 : u.getBodyStateChangeCost(u.target_body_state, targetState);
 	// If unsufficient TUs - cancel missions other than GotoLocation
 	if (!spendAgentTUs(state, u, cost, type != Type::GotoLocation,
 	                   targetState == BodyState::Kneeling))
@@ -2484,54 +2494,6 @@ bool BattleUnitMission::advanceBodyState(GameState &state, BattleUnit &u, BodySt
 	// Finished
 	dest = targetState;
 	return true;
-}
-
-int BattleUnitMission::getTurnCost(BattleUnit &) { return 1; }
-
-int BattleUnitMission::getBodyStateChangeCost(const BattleUnit &u, BodyState from, BodyState to)
-{
-	// If not within these conditions, it costs nothing!
-	switch (to)
-	{
-		case BodyState::Flying:
-		case BodyState::Standing:
-			switch (from)
-			{
-				case BodyState::Kneeling:
-					return 8;
-				case BodyState::Prone:
-					return 16;
-				default:
-					return 0;
-			}
-			break;
-		case BodyState::Kneeling:
-			switch (from)
-			{
-				case BodyState::Prone:
-				case BodyState::Standing:
-				case BodyState::Flying:
-					return 8;
-				default:
-					return 0;
-			}
-			break;
-		case BodyState::Prone:
-			switch (from)
-			{
-				case BodyState::Kneeling:
-				case BodyState::Standing:
-				case BodyState::Flying:
-					return 8;
-				default:
-					return 0;
-			}
-			break;
-		case BodyState::Throwing:
-			return u.getThrowCost();
-		default:
-			return 0;
-	}
 }
 
 UString BattleUnitMission::getName()

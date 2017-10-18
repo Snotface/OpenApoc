@@ -1,10 +1,10 @@
 #include "framework/data.h"
 #include "framework/framework.h"
-#include "game/state/agent.h"
 #include "game/state/battle/ai/aitype.h"
-#include "game/state/battle/battleunitimagepack.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/aequipment_type.h"
+#include "game/state/rules/aequipmenttype.h"
+#include "game/state/rules/battle/battleunitimagepack.h"
+#include "game/state/shared/agent.h"
 #include "library/strings_format.h"
 #include "library/voxel.h"
 #include "tools/extractors/common/tacp.h"
@@ -407,6 +407,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				a->growthOptions.emplace_back(
 				    100, std::pair<StateRef<AgentType>, int>({&state, "AGENTTYPE_MULTIWORM"}, 1));
 				a->detectionWeight = 1;
+				a->movementPercent = 40;
 				break;
 			case UNIT_TYPE_CHRYSALIS:
 				a->appearance_count = 2;
@@ -426,6 +427,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				a->growthOptions.emplace_back(
 				    100, std::pair<StateRef<AgentType>, int>({&state, "AGENTTYPE_POPPER"}, 1));
 				a->detectionWeight = 1;
+				a->movementPercent = 0;
 				break;
 			case UNIT_TYPE_QUEENSPAWN:
 				a->animation_packs.emplace_back(
@@ -435,6 +437,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				a->growthChance = 0;
 				a->detectionWeight = 20;
 				a->missionObjective = true;
+				a->movementPercent = 0;
 				break;
 			// Non-humanoid aliens
 			case UNIT_TYPE_BRAINSUCKER:
@@ -444,6 +447,8 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				infiltrationID = 1;
 				a->growthChance = 20;
 				a->detectionWeight = 1;
+				a->growthInfiltration = 1;
+				a->movementPercent = 40;
 				break;
 			case UNIT_TYPE_HYPERWORM:
 				a->animation_packs.emplace_back(
@@ -454,6 +459,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				a->growthOptions.emplace_back(
 				    100, std::pair<StateRef<AgentType>, int>({&state, "AGENTTYPE_CHRYSALIS"}, 1));
 				a->detectionWeight = 1;
+				a->movementPercent = 33;
 				break;
 			case UNIT_TYPE_SPITTER:
 				a->animation_packs.emplace_back(
@@ -462,6 +468,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				infiltrationID = 7;
 				a->growthChance = 2;
 				a->detectionWeight = 3;
+				a->movementPercent = 33;
 				break;
 			case UNIT_TYPE_POPPER:
 				a->animation_packs.emplace_back(
@@ -470,6 +477,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				infiltrationID = 8;
 				a->growthChance = 2;
 				a->detectionWeight = 2;
+				a->movementPercent = 33;
 				break;
 			case UNIT_TYPE_MICRONOID:
 				a->animation_packs.emplace_back(
@@ -478,6 +486,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				infiltrationID = 12;
 				a->growthChance = 0;
 				a->detectionWeight = 1;
+				a->movementPercent = 30;
 				break;
 			// Special case: Multiworm, can only crawl
 			case UNIT_TYPE_MULTIWORM:
@@ -489,6 +498,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				a->growthOptions.emplace_back(
 				    100, std::pair<StateRef<AgentType>, int>({&state, "AGENTTYPE_HYPERWORM"}, 4));
 				a->detectionWeight = 3;
+				a->movementPercent = 33;
 				break;
 			// Special case: Megaspawn, can strafe
 			case UNIT_TYPE_MEGASPAWN:
@@ -498,6 +508,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				infiltrationID = 9;
 				a->growthChance = 2;
 				a->detectionWeight = 10;
+				a->movementPercent = 0;
 				break;
 
 			// Special case: Psimorph, non-humanoid that can only fly
@@ -508,6 +519,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				infiltrationID = 10;
 				a->growthChance = 2;
 				a->detectionWeight = 8;
+				a->movementPercent = 0;
 				break;
 
 			// Skeletoid and Anthropod are both humanoids
@@ -516,6 +528,7 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 				infiltrationID = 5;
 				a->growthChance = 2;
 				a->detectionWeight = 3;
+				a->movementPercent = 33;
 			// Other humans
 			default:
 				if (i == UNIT_TYPE_SKELETOID)
@@ -1090,6 +1103,149 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 		a->can_improve = false;
 		a->score = data.score;
 
+		// Bodies
+		int liveIdx = 0;
+		int deadIdx = 0;
+		int liveSpace = 0;
+		int deadSpace = 0;
+		switch (i)
+		{
+			case UNIT_TYPE_ANTHROPOD:
+				liveIdx = 0;
+				deadIdx = 14;
+				liveSpace = 1;
+				deadSpace = 1;
+				break;
+			case UNIT_TYPE_BRAINSUCKER:
+				liveIdx = 1;
+				deadIdx = 15;
+				liveSpace = 1;
+				deadSpace = 1;
+				break;
+			case UNIT_TYPE_CHRYSALIS:
+				liveIdx = 2;
+				deadIdx = 17;
+				liveSpace = 2;
+				deadSpace = 2;
+				break;
+			case UNIT_TYPE_MEGASPAWN:
+				liveIdx = 3;
+				deadIdx = 17;
+				liveSpace = 12;
+				deadSpace = 12;
+				break;
+			case UNIT_TYPE_MULTIWORM_EGG:
+				liveIdx = 4;
+				deadIdx = 18;
+				liveSpace = 2;
+				deadSpace = 2;
+				break;
+			case UNIT_TYPE_HYPERWORM:
+				liveIdx = 5;
+				deadIdx = 19;
+				liveSpace = 1;
+				deadSpace = 1;
+				break;
+			case UNIT_TYPE_MULTIWORM:
+				liveIdx = 6;
+				deadIdx = 20;
+				liveSpace = 5;
+				deadSpace = 5;
+				break;
+			// OVerspawn 7 / ?
+			case UNIT_TYPE_POPPER:
+				liveIdx = 8;
+				deadIdx = 21;
+				liveSpace = 1;
+				deadSpace = 1;
+				break;
+			case UNIT_TYPE_PSIMORPH:
+				liveIdx = 9;
+				deadIdx = 22;
+				liveSpace = 5;
+				deadSpace = 12;
+				break;
+			case UNIT_TYPE_QUEENSPAWN:
+				liveIdx = 10;
+				deadIdx = 23;
+				liveSpace = 20;
+				deadSpace = 20;
+				break;
+			case UNIT_TYPE_SKELETOID:
+				liveIdx = 11;
+				deadIdx = 24;
+				liveSpace = 1;
+				deadSpace = 1;
+				break;
+			case UNIT_TYPE_SPITTER:
+				liveIdx = 12;
+				deadIdx = 25;
+				liveSpace = 1;
+				deadSpace = 1;
+				break;
+			case UNIT_TYPE_MICRONOID:
+				liveIdx = 13;
+				deadIdx = 26;
+				liveSpace = 1;
+				deadSpace = 1;
+				break;
+		}
+		switch (i)
+		{
+			case UNIT_TYPE_MULTIWORM_EGG:
+			case UNIT_TYPE_BRAINSUCKER:
+			case UNIT_TYPE_MULTIWORM:
+			case UNIT_TYPE_HYPERWORM:
+			case UNIT_TYPE_CHRYSALIS:
+			case UNIT_TYPE_ANTHROPOD:
+			case UNIT_TYPE_SKELETOID:
+			case UNIT_TYPE_SPITTER:
+			case UNIT_TYPE_POPPER:
+			case UNIT_TYPE_MEGASPAWN:
+			case UNIT_TYPE_PSIMORPH:
+			case UNIT_TYPE_QUEENSPAWN:
+			case UNIT_TYPE_MICRONOID:
+			{
+				auto liveName =
+				    format("%s%s_ALIVE", AEquipmentType::getPrefix(), canon_string(a->name));
+				auto deadName =
+				    format("%s%s_DEAD", AEquipmentType::getPrefix(), canon_string(a->name));
+
+				auto liveItem = mksp<AEquipmentType>();
+				liveItem->bioStorage = true;
+				liveItem->equipscreen_size = {6, 5};
+				liveItem->equipscreen_sprite =
+				    fw().data->loadImage(format("PCK:xcom3/ufodata/contico.pck:xcom3/ufodata/"
+				                                "contico.tab:%d:xcom3/ufodata/research.pcx",
+				                                liveIdx));
+				liveItem->store_space = liveSpace;
+				liveItem->type = AEquipmentType::Type::Loot;
+				liveItem->bioRemains = {&state, deadName};
+				liveItem->name = format("Live %s", a->name);
+				liveItem->score = a->score;
+				state.agent_equipment[liveName] = liveItem;
+				a->liveSpeciesItem = {&state, liveName};
+
+				auto deadItem = mksp<AEquipmentType>();
+				deadItem->bioStorage = true;
+				deadItem->equipscreen_size = {6, 5};
+				deadItem->equipscreen_sprite =
+				    fw().data->loadImage(format("PCK:xcom3/ufodata/contico.pck:xcom3/ufodata/"
+				                                "contico.tab:%d:xcom3/ufodata/research.pcx",
+				                                deadIdx));
+				deadItem->store_space = deadSpace;
+				deadItem->type = AEquipmentType::Type::Loot;
+				deadItem->name = format("Dead %s", a->name);
+				deadItem->score = 0;
+				state.agent_equipment[deadName] = deadItem;
+				a->deadSpeciesItem = {&state, deadName};
+
+				break;
+			}
+			default:
+				break;
+		}
+
 		state.agent_types[id] = a;
 	}
 
@@ -1177,6 +1333,15 @@ void InitialGameStateExtractor::extractAgentTypes(GameState &state) const
 		}
 
 		state.agent_equipment_layouts[id] = a;
+	}
+
+	// Initial aliens
+	for (int difficulty = 0; difficulty < 5; difficulty++)
+	{
+		state.initial_aliens[difficulty].emplace_back(
+		    StateRef<AgentType>(&state, "AGENTTYPE_BRAINSUCKER"), Vec2<int>{1, difficulty / 2 + 2});
+		state.initial_aliens[difficulty].emplace_back(
+		    StateRef<AgentType>(&state, "AGENTTYPE_ANTHROPOD"), Vec2<int>{1, difficulty / 2 + 2});
 	}
 }
 
@@ -1486,13 +1651,10 @@ void InitialGameStateExtractor::extractAgentBodyTypes(GameState &state) const
 
 		for (auto &entry : voxelInfo)
 		{
-			// FIXME: FIGURE OUT WTF IS THIS!
-			// Alexey Andronov: I don't really remember why I add 4 here
-			// Maybe because it's too small otherwise for low poses?
-			a->height[entry.first] = entry.first == BodyState::Downed
-			                             ? entry.second.x
-			                             : std::min(a->maxHeight, entry.second.x + 4);
-			// entry.second.x + 4;
+			// We increase height for the purpose of voxelmaps
+			// Otherwise we fire through units in front of us
+			a->height[entry.first] =
+			    entry.first == BodyState::Downed ? entry.second.x : entry.second.x + 4;
 			a->muzzleZPosition[entry.first] = entry.second.x;
 
 			if (a->large)

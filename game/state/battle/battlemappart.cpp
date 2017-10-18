@@ -3,14 +3,15 @@
 #include "game/state/battle/battledoor.h"
 #include "game/state/battle/battlehazard.h"
 #include "game/state/battle/battleitem.h"
-#include "game/state/battle/battlemappart_type.h"
-#include "game/state/city/projectile.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/damage.h"
-#include "game/state/tileview/collision.h"
-#include "game/state/tileview/tile.h"
-#include "game/state/tileview/tileobject_battleitem.h"
-#include "game/state/tileview/tileobject_battlemappart.h"
+#include "game/state/rules/battle/battlemapparttype.h"
+#include "game/state/rules/battle/damage.h"
+#include "game/state/shared/projectile.h"
+#include "game/state/tilemap/collision.h"
+#include "game/state/tilemap/tilemap.h"
+#include "game/state/tilemap/tileobject_battleitem.h"
+#include "game/state/tilemap/tileobject_battlemappart.h"
+#include "game/state/tilemap/tileobject_battleunit.h"
 #include "library/strings_format.h"
 #include <algorithm>
 #include <set>
@@ -40,8 +41,6 @@ void BattleMapPart::die(GameState &state, bool explosive, bool violently)
 		this->tileObject->removeFromMap();
 		this->tileObject.reset();
 		destroyed = true;
-
-		LogWarning("Deal falling damage to units!");
 	}
 	else
 	{
@@ -921,7 +920,7 @@ bool BattleMapPart::findSupport()
 					}
 				}
 				// Could not find map part of this type or it cannot provide support
-				// We ignore those that have positive "ticksUntilFalling" as those can be saved yet
+				// We ignore those that have positive "ticksUntilCollapse" as those can be saved yet
 				if (!mp || mp->destroyed || mp->damaged || mp->falling)
 				{
 					// fail
@@ -976,11 +975,12 @@ bool BattleMapPart::findSupport()
 	return false;
 }
 
-sp<std::set<BattleMapPart *>> BattleMapPart::getSupportedParts()
+sp<std::set<SupportedMapPart *>> BattleMapPart::getSupportedParts()
 {
-	sp<std::set<BattleMapPart *>> collapseList = mksp<std::set<BattleMapPart *>>();
+	sp<std::set<SupportedMapPart *>> supportedMapParts = mksp<std::set<SupportedMapPart *>>();
 	auto &map = tileObject->map;
-	for (auto &p : this->supportedParts)
+	// Since we reference supported parts by type we have to find each in it's tile by type
+	for (auto &p : supportedParts)
 	{
 		auto tile = map.getTile(p.first);
 		for (auto &obj : tile->ownedObjects)
@@ -992,12 +992,14 @@ sp<std::set<BattleMapPart *>> BattleMapPart::getSupportedParts()
 				{
 					continue;
 				}
-				collapseList->insert(mp.get());
+				supportedMapParts->insert(mp.get());
 			}
 		}
 	}
-	return collapseList;
+	return supportedMapParts;
 }
+
+void BattleMapPart::clearSupportedParts() { supportedParts.clear(); }
 
 void BattleMapPart::ceaseBeingSupported()
 {
@@ -1063,126 +1065,6 @@ void BattleMapPart::ceaseSupportProvision()
 	}
 }
 
-void BattleMapPart::attemptReLinkSupports(sp<std::set<BattleMapPart *>> set)
-{
-	if (set->empty())
-	{
-		return;
-	}
-
-	UString log = "ATTEMPTING RE-LINK OF SUPPORTS";
-
-	// First mark all those in list as about to fall
-	for (auto &mp : *set)
-	{
-		mp->queueCollapse();
-		mp->ceaseBeingSupported();
-	}
-
-	// Then try to re-establish support links
-	bool listChanged;
-	do
-	{
-		// DEBUG OUTPUT
-		LogWarning("%s", log);
-		log = "";
-		log += format("\nIteration begins. List contains %d items:", (int)set->size());
-		for (auto &mp : *set)
-		{
-			auto pos = mp->tileObject->getOwningTile()->position;
-			log += format("\n %s at %d %d %d", mp->type.id, pos.x, pos.y, pos.z);
-		}
-		log += format("\n");
-
-		auto nextSet = mksp<std::set<BattleMapPart *>>();
-		listChanged = false;
-		// Attempt to re-link every entry in set
-		for (auto &mp : *set)
-		{
-			// Unsupport every map part supported by this
-			auto supportedByThisMp = mp->getSupportedParts();
-			for (auto &newmp : *supportedByThisMp)
-			{
-				newmp->queueCollapse(mp->ticksUntilCollapse);
-			}
-			auto pos = mp->tileObject->getOwningTile()->position;
-			// Try to find support without those that depended on us
-			if (mp->findSupport())
-			{
-				log += format("\n Processing %s at %d %d %d: OK %s", mp->type.id, pos.x, pos.y,
-				              pos.z, mp->providesHardSupport ? "HARD" : "SOFT");
-				// DEBUG OUTPUT
-				{
-					auto &map = mp->tileObject->map;
-					for (int x = pos.x - 1; x <= pos.x + 1; x++)
-					{
-						for (int y = pos.y - 1; y <= pos.y + 1; y++)
-						{
-							for (int z = pos.z - 1; z <= pos.z + 1; z++)
-							{
-								if (x < 0 || x >= map.size.x || y < 0 || y >= map.size.y || z < 0 ||
-								    z >= map.size.z)
-								{
-									continue;
-								}
-								auto tile2 = map.getTile(x, y, z);
-								for (auto &o2 : tile2->ownedObjects)
-								{
-									if (o2->getType() == TileObject::Type::Ground ||
-									    o2->getType() == TileObject::Type::Feature ||
-									    o2->getType() == TileObject::Type::LeftWall ||
-									    o2->getType() == TileObject::Type::RightWall)
-									{
-										auto mp2 =
-										    std::static_pointer_cast<TileObjectBattleMapPart>(o2)
-										        ->getOwner();
-										for (auto &p : mp2->supportedParts)
-										{
-											if (p.first == pos && p.second == mp->type->type)
-											{
-												log += format("\n - Supported by %s at %d %d %d",
-												              mp2->type.id, x - pos.x, y - pos.y,
-												              z - pos.z);
-											}
-										}
-									}
-								}
-							}
-						}
-					}
-				}
-				// Cancel collapse of this part and every part supported by it
-				mp->cancelCollapse();
-				for (auto &newmp : *supportedByThisMp)
-				{
-					newmp->cancelCollapse();
-				}
-				listChanged = true;
-			}
-			else
-			{
-				log += format("\n Processing %s at %d %d %d: FAIL, remains in next iteration",
-				              mp->type.id, pos.x, pos.y, pos.z);
-				nextSet->insert(mp);
-				mp->supportedParts.clear();
-				for (auto &newmp : *supportedByThisMp)
-				{
-					auto newpos = newmp->tileObject->getOwningTile()->position;
-					log += format("\n - %s at %d %d %d added to next iteration", newmp->type.id,
-					              newpos.x, newpos.y, newpos.z);
-					newmp->ceaseBeingSupported();
-					nextSet->insert(newmp);
-					listChanged = true;
-				}
-			}
-		}
-		log += format("\n");
-		set = nextSet;
-	} while (listChanged);
-
-	LogWarning("%s", log);
-}
-
 void BattleMapPart::collapse(GameState &state)
 {
 	// If it's already falling or destroyed or supported do nothing
@@ -1210,6 +1092,7 @@ void BattleMapPart::collapse(GameState &state)
 		// If we would somehow call collapse() in a way that would set falling to true but
 		// would not trigger the setPosition() afterwards, this logic would fail
 	}
+	ceaseBeingSupported();
 	ceaseSupportProvision();
 	ceaseDoorFunction();
 }
@@ -1237,108 +1120,7 @@ void BattleMapPart::update(GameState &state, unsigned int ticks)
 	// Process falling
 	if (falling)
 	{
-		auto fallTicksRemaining = ticks;
-		auto newPosition = position;
-		while (fallTicksRemaining-- > 0)
-		{
-			fallingSpeed += FALLING_ACCELERATION_MAP_PART;
-			newPosition -=
-			    Vec3<float>{0.0f, 0.0f, (fallingSpeed / TICK_SCALE)} / VELOCITY_SCALE_BATTLE;
-		}
-
-		// Collision with this tile happens when map part moves from this tile to the next
-		if (newPosition.z < 0 || floorf(newPosition.z) != floorf(position.z))
-		{
-			sp<BattleMapPart> rubble;
-			for (auto &obj : tileObject->getOwningTile()->ownedObjects)
-			{
-				switch (obj->getType())
-				{
-					// If there's a live ground or map mart of our type here - die
-					case TileObject::Type::Ground:
-					case TileObject::Type::LeftWall:
-					case TileObject::Type::RightWall:
-					case TileObject::Type::Feature:
-					{
-						auto mp =
-						    std::static_pointer_cast<TileObjectBattleMapPart>(obj)->getOwner();
-
-						// Find if we collide into it
-						if (mp->type->type == type->type ||
-						    mp->type->type == BattleMapPartType::Type::Ground)
-						{
-							if (tileObject && mp->isAlive())
-							{
-								destroyed = true;
-							}
-						}
-
-						// Find if we deposit rubble into it
-						if ((type->type != BattleMapPartType::Type::Ground &&
-						     mp->type->type == type->type) ||
-						    (type->type == BattleMapPartType::Type::Ground &&
-						     mp->type->type == BattleMapPartType::Type::Feature))
-						{
-							if (mp->isAlive())
-							{
-								rubble = mp;
-							}
-						}
-
-						break;
-					}
-					default:
-						// Ignore other object types?
-						break;
-				}
-			}
-			// Spawn smoke, more intense if we land here
-			{
-				StateRef<DamageType> dtSmoke = {&state, "DAMAGETYPE_SMOKE"};
-				auto hazard = state.current_battle->placeHazard(
-				    state, owner, nullptr, dtSmoke, position,
-				    dtSmoke->hazardType->getLifetime(state), 2, destroyed ? 6 : 12);
-				if (hazard)
-				{
-					hazard->ticksUntilVisible = 0;
-				}
-			}
-			// Cease to exist if destroyed
-			if (destroyed)
-			{
-				if (!type->rubble.empty())
-				{
-					if (!rubble)
-					{
-						// If no rubble present - spawn rubble
-						auto rubble = mksp<BattleMapPart>();
-						Vec3<int> initialPosition = position;
-						rubble->damaged = true;
-						rubble->owner = owner;
-						rubble->position = initialPosition;
-						rubble->position += Vec3<float>(0.5f, 0.5f, 0.0f);
-						rubble->type = type->rubble.front();
-						state.current_battle->map_parts.push_back(rubble);
-						state.current_battle->map->addObjectToMap(rubble);
-					}
-					else
-					{
-						// If rubble present - increment it if possible
-						auto it = std::find(type->rubble.begin(), type->rubble.end(), rubble->type);
-						if (it != type->rubble.end() && ++it != type->rubble.end())
-						{
-							rubble->type = *it;
-							rubble->setPosition(state, rubble->position);
-						}
-					}
-				}
-
-				die(state);
-				return;
-			}
-		}
-
-		setPosition(state, newPosition);
+		updateFalling(state, ticks);
 		return;
 	}
 
@@ -1349,6 +1131,129 @@ void BattleMapPart::update(GameState &state, unsigned int ticks)
 		animation_frame_ticks %= TICKS_PER_FRAME_MAP_PART * type->animation_frames.size();
 	}
 }
+
+void BattleMapPart::updateFalling(GameState &state, unsigned int ticks)
+{
+	auto fallTicksRemaining = ticks;
+	auto newPosition = position;
+	while (fallTicksRemaining-- > 0)
+	{
+		fallingSpeed += FALLING_ACCELERATION_MAP_PART;
+		newPosition -= Vec3<float>{0.0f, 0.0f, (fallingSpeed / TICK_SCALE)} / VELOCITY_SCALE_BATTLE;
+	}
+
+	// Collision with this tile happens when map part moves from this tile to the next
+	if (newPosition.z < 0 || floorf(newPosition.z) != floorf(position.z))
+	{
+		sp<BattleMapPart> rubble;
+		for (auto &obj : tileObject->getOwningTile()->ownedObjects)
+		{
+			switch (obj->getType())
+			{
+				// If there's a live ground or map mart of our type here - die
+				case TileObject::Type::Ground:
+				case TileObject::Type::LeftWall:
+				case TileObject::Type::RightWall:
+				case TileObject::Type::Feature:
+				{
+					auto mp = std::static_pointer_cast<TileObjectBattleMapPart>(obj)->getOwner();
+
+					// Find if we collide into it
+					if (mp->type->type == type->type ||
+					    mp->type->type == BattleMapPartType::Type::Ground)
+					{
+						if (tileObject && mp->isAlive())
+						{
+							destroyed = true;
+						}
+					}
+
+					// Find if we deposit rubble into it
+					if ((type->type != BattleMapPartType::Type::Ground &&
+					     mp->type->type == type->type) ||
+					    (type->type == BattleMapPartType::Type::Ground &&
+					     mp->type->type == BattleMapPartType::Type::Feature))
+					{
+						if (mp->isAlive())
+						{
+							rubble = mp;
+						}
+					}
+
+					break;
+				}
+				case TileObject::Type::Unit:
+				{
+					auto u = std::static_pointer_cast<TileObjectBattleUnit>(obj)->getUnit();
+					// FIXME: Ensure falling damage is correct
+					u->applyDamage(state, FALLING_MAP_PART_DAMAGE_TO_UNIT,
+					               {&state, "DAMAGETYPE_FALLING_OBJECT"}, BodyPart::Helmet,
+					               DamageSource::Impact);
+					break;
+				}
+				default:
+					// Ignore other object types?
+					break;
+			}
+		}
+		// Spawn smoke, more intense if we land here
+		{
+			StateRef<DamageType> dtSmoke = {&state, "DAMAGETYPE_SMOKE"};
+			auto hazard = state.current_battle->placeHazard(
+			    state, owner, nullptr, dtSmoke, position, dtSmoke->hazardType->getLifetime(state),
+			    2, destroyed ? 6 : 12);
+			if (hazard)
+			{
+				hazard->ticksUntilVisible = 0;
+			}
+		}
+		// Cease to exist if destroyed
+		if (destroyed)
+		{
+			if (!type->rubble.empty())
+			{
+				if (!rubble)
+				{
+					// If no rubble present - spawn rubble
+					auto rubble = mksp<BattleMapPart>();
+					Vec3<int> initialPosition = position;
+					rubble->damaged = true;
+					rubble->owner = owner;
+					rubble->position = initialPosition;
+					rubble->position += Vec3<float>(0.5f, 0.5f, 0.0f);
+					rubble->type = type->rubble.front();
+					state.current_battle->map_parts.push_back(rubble);
+					state.current_battle->map->addObjectToMap(rubble);
+				}
+				else
+				{
+					// If rubble present - increment it if possible
+					auto it = std::find(type->rubble.begin(), type->rubble.end(), rubble->type);
+					if (it != type->rubble.end() && ++it != type->rubble.end())
+					{
+						rubble->type = *it;
+						rubble->setPosition(state, rubble->position);
+					}
+				}
+			}
+
+			die(state);
+			return;
+		}
+	}
+
+	setPosition(state, newPosition);
+}
+
+Vec3<int> BattleMapPart::getTilePosition() const { return tileObject->getOwningTile()->position; }
+
+const TileMap &BattleMapPart::getMap() const { return tileObject->map; }
+
+UString BattleMapPart::getId() const { return type.id; }
+
+int BattleMapPart::getType() const { return (int)type->type; }
+
+UString BattleMapPart::getSupportString() const { return providesHardSupport ? "HARD" : "SOFT"; }
 
 void BattleMapPart::setPosition(GameState &, const Vec3<float> &pos)
 {

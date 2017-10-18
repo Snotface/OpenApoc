@@ -51,21 +51,39 @@
         <image/>
       </graphic>
       <graphic id="INVENTORY">
-        <position x="26" y="368"/>
-        <size width="550" height="80"/>
+        <position x="16" y="364"/>
+        <size width="522" height="84"/>
         <image/>
         <imageposition>fit</imageposition>
       </graphic>
-      <scroll id="AGENT_SELECT_SCROLL">
-        <position x="571" y="81"/>
-        <size width="16" height="242"/>
+	  <graphic id="BUTTON_UNDERPANTS">
+        <position x="596" y="36"/>
+        <size width="44" height="83"/>
+        <image>city/agent-equip-buttons.png</image>
+        <imageposition>fit</imageposition>
+      </graphic>
+	  <radiobutton id="BUTTON_SHOW_WEAPONS" groupid="TYPE">
+        <position x="602" y="40"/>
+        <size width="35" height="34"/>
+        <image/>
+        <imagechecked>PCK:xcom3/ufodata/newbut.pck:xcom3/ufodata/newbut.tab:6:xcom3/ufodata/agenteqp.pcx</imagechecked>
+      </radiobutton>
+      <radiobutton id="BUTTON_SHOW_ARMOUR" groupid="TYPE">
+        <position x="602" y="80"/>
+        <size width="35" height="34"/>
+        <image/>
+        <imagechecked>PCK:xcom3/ufodata/newbut.pck:xcom3/ufodata/newbut.tab:7:xcom3/ufodata/agenteqp.pcx</imagechecked>
+	  </radiobutton>
+	  <scroll id="AGENT_SELECT_SCROLL">
+        <position x="566" y="81"/>
+        <size width="26" height="242"/>
       </scroll>
       <listbox id="AGENT_SELECT_BOX" scrollbarid="AGENT_SELECT_SCROLL">
         <position x="463" y="70"/>
         <size width="98" height="260"/>
         <item size="0" spacing="5"/>
-        <hovercolour r="255" g="255" b="255" a="255"/>
-        <selcolour r="0" g="255" b="0" a="255"/>
+        <hovercolour r="255" g="255" b="255" a="0"/>
+        <selcolour r="255" g="255" b="255" a="0"/>
       </listbox>
       <graphicbutton id="AGENT_SCROLL_UP" scrollprev="AGENT_SELECT_SCROLL">
         <position x="568" y="56"/>

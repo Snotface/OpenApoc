@@ -1,7 +1,7 @@
 #pragma once
 
 #include "framework/stage.h"
-#include "game/ui/base/basegraphics.h"
+#include "game/ui/components/basegraphics.h"
 #include "library/sp.h"
 #include <vector>
 
@@ -26,6 +26,13 @@ class BaseStage : public Stage
 	sp<GraphicButton> currentView;
 	BaseGraphics::FacilityHighlight viewHighlight;
 	sp<Facility> viewFacility;
+
+	// Can be introduced during transaction screen manipulation
+	int cargoDelta = 0;
+	// Can be introduced during transaction screen manipulation
+	int bioDelta = 0;
+	// Can be introduced during transaction screen manipulation
+	int lqDelta = 0;
 
 	sp<GameState> state;
 	virtual void changeBase(sp<Base> newBase = nullptr);

@@ -1,12 +1,15 @@
 #include "framework/data.h"
 #include "framework/framework.h"
 #include "game/state/city/city.h"
-#include "game/state/rules/scenery_tile_type.h"
+#include "game/state/rules/city/scenerytiletype.h"
 #include "library/strings_format.h"
 #include "library/xorshift.h"
 #include "tools/extractors/extractors.h"
 
 #include <map>
+
+// TUBE DEBUG OUTPUT
+//#define TUBE_DEBUG_OUTPUT
 
 namespace OpenApoc
 {
@@ -87,5 +90,123 @@ void InitialGameStateExtractor::extractCityMap(GameState &state, UString fileNam
 			}
 		}
 	}
+
+	// Fixing buggy city
+	if (fileName == "citymap1")
+	{
+		city->initial_tiles[Vec3<int>{50, 109, 4}] = {&state, "CITYTILE_CITYMAP_83"};
+	}
+	if (fileName == "citymap2")
+	{
+		city->initial_tiles.erase(Vec3<int>{47, 86, 4});
+		city->initial_tiles.erase(Vec3<int>{45, 98, 6});
+		city->initial_tiles.erase(Vec3<int>{69, 80, 4});
+		city->initial_tiles.erase(Vec3<int>{77, 80, 4});
+		city->initial_tiles[Vec3<int>{44, 71, 4}] = {&state, "CITYTILE_CITYMAP_82"};
+	}
+	if (fileName == "citymap3")
+	{
+		// Support hanging road
+		city->initial_tiles[Vec3<int>{95, 68, 2}] = {&state, "CITYTILE_CITYMAP_92"};
+		city->initial_tiles[Vec3<int>{95, 72, 2}] = {&state, "CITYTILE_CITYMAP_92"};
+	}
+	if (fileName == "citymap5")
+	{
+		// Support hanging road
+		city->initial_tiles[Vec3<int>{116, 100, 2}] = {&state, "CITYTILE_CITYMAP_949"};
+	}
+
+#ifdef TUBE_DEBUG_OUTPUT
+	for (unsigned int z = 0; z < sizeZ; z++)
+	{
+		for (unsigned int y = 0; y < sizeY; y++)
+		{
+			for (unsigned int x = 0; x < sizeX; x++)
+			{
+				if (city->initial_tiles.find(Vec3<int>{x + 20, y + 20, z + 1}) ==
+				    city->initial_tiles.end())
+				{
+					continue;
+				}
+				auto curTileName = city->initial_tiles.at(Vec3<int>{x + 20, y + 20, z + 1}).id;
+				if (tubes.find(curTileName) != tubes.end())
+				{
+					auto curTileMap = tubes.at(curTileName);
+					std::set<std::pair<UString, int>> toCheck;
+
+					// dont check 4ways
+					if (curTileMap[0] && curTileMap[1] && curTileMap[2] && curTileMap[3])
+					{
+						continue;
+					}
+					// North
+					if (curTileMap[0] && y - 1 >= 0 &&
+					    city->initial_tiles.find(Vec3<int>{x + 20, y - 1 + 20, z + 1}) !=
+					        city->initial_tiles.end())
+					{
+						toCheck.emplace(
+						    city->initial_tiles.at(Vec3<int>{x + 20, y - 1 + 20, z + 1}).id, 0);
+					}
+					// East
+					if (curTileMap[1] && x + 1 < sizeX &&
+					    city->initial_tiles.find(Vec3<int>{x + 1 + 20, y + 20, z + 1}) !=
+					        city->initial_tiles.end())
+					{
+						toCheck.emplace(
+						    city->initial_tiles.at(Vec3<int>{x + 1 + 20, y + 20, z + 1}).id, 1);
+					}
+					// South
+					if (curTileMap[2] && y + 1 < sizeY &&
+					    city->initial_tiles.find(Vec3<int>{x + 20, y + 1 + 20, z + 1}) !=
+					        city->initial_tiles.end())
+					{
+						toCheck.emplace(
+						    city->initial_tiles.at(Vec3<int>{x + 20, y + 1 + 20, z + 1}).id, 2);
+					}
+					// West
+					if (curTileMap[3] && x - 1 >= 0 &&
+					    city->initial_tiles.find(Vec3<int>{x - 1 + 20, y + 20, z + 1}) !=
+					        city->initial_tiles.end())
+					{
+						toCheck.emplace(
+						    city->initial_tiles.at(Vec3<int>{x - 1 + 20, y + 20, z + 1}).id, 3);
+					}
+					for (auto &p : toCheck)
+					{
+						if (tubes.find(p.first) != tubes.end())
+						{
+							auto tarTileMap = tubes.at(p.first);
+
+							int dir = p.second;
+							int invDir = -1;
+							switch (dir)
+							{
+								case 0:
+									invDir = 2;
+									break;
+								case 1:
+									invDir = 3;
+									break;
+								case 2:
+									invDir = 0;
+									break;
+								case 3:
+									invDir = 1;
+									break;
+							}
+
+							if (!tarTileMap[invDir])
+							{
+								LogWarning("MAP %s TILE %s at %d,%d,%d mismatch %s at dir %d",
+								           fileName, curTileName, x + 20, y + 20, z + 1, p.first,
+								           dir);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+#endif
 }
 } // namespace OpenApoc

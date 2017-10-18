@@ -6,8 +6,8 @@
 #include "framework/keycodes.h"
 #include "game/state/city/city.h"
 #include "game/state/gamestate.h"
-#include "game/ui/city/cityview.h"
 #include "game/ui/general/loadingscreen.h"
+#include "game/ui/tileview/cityview.h"
 
 namespace OpenApoc
 {
@@ -42,6 +42,7 @@ std::shared_future<void> loadGame(const UString &path, sp<GameState> state)
 		}
 		state->startGame();
 		state->initState();
+		state->fillOrgStartingProperty();
 		state->fillPlayerStartingProperty();
 		return;
 	});

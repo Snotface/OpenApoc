@@ -1,42 +1,46 @@
 #include "game/state/battle/battle.h"
+#include "framework/configfile.h"
 #include "framework/framework.h"
 #include "framework/sound.h"
 #include "framework/trace.h"
-#include "game/state/aequipment.h"
 #include "game/state/battle/ai/aitype.h"
-#include "game/state/battle/battlecommonimagelist.h"
-#include "game/state/battle/battlecommonsamplelist.h"
 #include "game/state/battle/battledoor.h"
 #include "game/state/battle/battleexplosion.h"
 #include "game/state/battle/battlehazard.h"
 #include "game/state/battle/battleitem.h"
-#include "game/state/battle/battlemap.h"
 #include "game/state/battle/battlemappart.h"
-#include "game/state/battle/battlemappart_type.h"
 #include "game/state/battle/battlescanner.h"
 #include "game/state/battle/battleunit.h"
-#include "game/state/battle/battleunitanimationpack.h"
-#include "game/state/battle/battleunitimagepack.h"
+#include "game/state/city/agentmission.h"
+#include "game/state/city/base.h"
 #include "game/state/city/building.h"
 #include "game/state/city/city.h"
-#include "game/state/city/doodad.h"
-#include "game/state/city/projectile.h"
 #include "game/state/city/vehicle.h"
+#include "game/state/city/vehiclemission.h"
 #include "game/state/gameevent.h"
 #include "game/state/gamestate.h"
 #include "game/state/message.h"
-#include "game/state/rules/aequipment_type.h"
-#include "game/state/rules/damage.h"
-#include "game/state/rules/doodad_type.h"
-#include "game/state/tileview/collision.h"
-#include "game/state/tileview/tile.h"
-#include "game/state/tileview/tileobject_battlehazard.h"
-#include "game/state/tileview/tileobject_battleitem.h"
-#include "game/state/tileview/tileobject_battlemappart.h"
-#include "game/state/tileview/tileobject_battleunit.h"
-#include "game/state/tileview/tileobject_doodad.h"
-#include "game/state/tileview/tileobject_projectile.h"
-#include "game/state/tileview/tileobject_shadow.h"
+#include "game/state/rules/aequipmenttype.h"
+#include "game/state/rules/battle/battlecommonimagelist.h"
+#include "game/state/rules/battle/battlecommonsamplelist.h"
+#include "game/state/rules/battle/battlemap.h"
+#include "game/state/rules/battle/battlemapparttype.h"
+#include "game/state/rules/battle/battleunitanimationpack.h"
+#include "game/state/rules/battle/battleunitimagepack.h"
+#include "game/state/rules/battle/damage.h"
+#include "game/state/rules/doodadtype.h"
+#include "game/state/shared/aequipment.h"
+#include "game/state/shared/doodad.h"
+#include "game/state/shared/projectile.h"
+#include "game/state/tilemap/collision.h"
+#include "game/state/tilemap/tilemap.h"
+#include "game/state/tilemap/tileobject_battlehazard.h"
+#include "game/state/tilemap/tileobject_battleitem.h"
+#include "game/state/tilemap/tileobject_battlemappart.h"
+#include "game/state/tilemap/tileobject_battleunit.h"
+#include "game/state/tilemap/tileobject_doodad.h"
+#include "game/state/tilemap/tileobject_projectile.h"
+#include "game/state/tilemap/tileobject_shadow.h"
 #include "library/strings_format.h"
 #include "library/xorshift.h"
 #include <algorithm>
@@ -64,7 +68,7 @@ Battle::~Battle()
 	// before the TileMap
 	if (map)
 	{
-		map->ceaseBattlescapeUpdates = true;
+		map->ceaseUpdates = true;
 	}
 	for (auto &p : this->projectiles)
 	{
@@ -222,7 +226,7 @@ void Battle::initBattle(GameState &state, bool first)
 		u.second->refreshUnitVision(state);
 	}
 	// Pathfinding
-	updatePathfinding(state);
+	updatePathfinding(state, 0);
 	// AI
 	aiBlock.init(state);
 	for (auto &o : participants)
@@ -314,6 +318,12 @@ void Battle::initMap()
 bool Battle::initialMapCheck(GameState &state, std::list<StateRef<Agent>> agents)
 {
 	initMap();
+
+	// No checks for base defense
+	if (mission_type == MissionType::BaseDefense)
+	{
+		return true;
+	}
 
 	// Mark as low-priority all the enemy spawn los blocks that are seen from any player spawn block
 	for (auto &playerSpawn : losBlocks)
@@ -415,6 +425,7 @@ void linkUpList(std::list<BattleMapPart *> list)
 // For now, removes only ground
 void Battle::initialMapPartRemoval(GameState &state)
 {
+	std::ignore = state;
 	for (auto &u : units)
 	{
 		if (!u.second->isLarge())
@@ -499,8 +510,8 @@ void Battle::initialMapPartLinkUp()
 		if (mp->willCollapse())
 		{
 			auto pos = mp->tileObject->getOwningTile()->position;
-			LogWarning("MP %s SBT %d at %d %d %d is UNLINKED", mp->type.id,
-			           (int)mp->type->getVanillaSupportedById(), pos.x, pos.y, pos.z);
+			LogWarning("MP %s SBT %d at %s is UNLINKED", mp->type.id,
+			           (int)mp->type->getVanillaSupportedById(), pos);
 		}
 	}
 
@@ -534,8 +545,8 @@ void Battle::initialMapPartLinkUp()
 		if (mp->willCollapse())
 		{
 			auto pos = mp->tileObject->getOwningTile()->position;
-			LogWarning("MP %s SBT %d at %d %d %d is going to fall", mp->type.id,
-			           (int)mp->type->getVanillaSupportedById(), pos.x, pos.y, pos.z);
+			LogWarning("MP %s SBT %d at %s is going to fall", mp->type.id,
+			           (int)mp->type->getVanillaSupportedById(), pos);
 		}
 	}
 
@@ -613,7 +624,7 @@ void Battle::initialUnitSpawn(GameState &state)
 
 	// Fill spawn blocks
 	std::vector<sp<SpawnBlock>> spawnBlocks;
-	for (int i = 0; i < losBlocks.size(); i++)
+	for (size_t i = 0; i < losBlocks.size(); i++)
 	{
 		auto sb = mksp<SpawnBlock>();
 		auto &lb = losBlocks[i];
@@ -641,7 +652,7 @@ void Battle::initialUnitSpawn(GameState &state)
 			spawnOther.push_back(sb);
 			continue;
 		}
-		for (int i = 0; i < lb->spawn_priority; i++)
+		for (int j = 0; j < lb->spawn_priority; j++)
 		{
 			spawnMaps[{lb->spawn_type, lb->spawn_large_units ? UnitSize::Large : UnitSize::Small,
 			           lb->spawn_walking_units ? UnitMovement::Walking : UnitMovement::Flying,
@@ -676,9 +687,9 @@ void Battle::initialUnitSpawn(GameState &state)
 				    .push_back(sb);
 			}
 
-			for (int j = 0; j < 3; j++)
+			for (int k = 0; k < 3; k++)
 			{
-				auto st = (SpawnType)j;
+				auto st = (SpawnType)k;
 				if (st == lb->spawn_type || (st == SpawnType::Civilian && lb->also_allow_civilians))
 				{
 					continue;
@@ -703,27 +714,26 @@ void Battle::initialUnitSpawn(GameState &state)
 	}
 
 	// Spawn agents with spawn locations provided
-	for (auto &f : state.current_battle->forces)
+	for (auto &u : units)
 	{
-		for (auto &s : f.second.squads)
+		if (u.second->retreated || spawnLocations[u.second->agent->type].empty())
 		{
-			for (auto &u : s.units)
-			{
-				if (spawnLocations[u->agent->type].empty())
-				{
-					continue;
-				}
-				auto pos = listRandomiser(state.rng, spawnLocations[u->agent->type]);
-				spawnLocations[u->agent->type].remove(pos);
-				auto tile = map->getTile(pos.x, pos.y, pos.z);
-				u->position = tile->getRestingPosition(u->isLarge());
-			}
+			continue;
 		}
+		auto pos = listRandomiser(state.rng, spawnLocations[u.second->agent->type]);
+		spawnLocations[u.second->agent->type].remove(pos);
+		auto tile = map->getTile(pos.x, pos.y, pos.z);
+		u.second->position = tile->getRestingPosition(u.second->isLarge());
 	}
 
 	// Actually spawn agents
 	for (auto &f : state.current_battle->forces)
 	{
+		// Note if we need to spawn non-combatants at civilian spots
+		bool baseDefendingSide =
+		    state.current_battle->mission_type == Battle::MissionType::BaseDefense &&
+		    f.first == state.current_battle->currentPlayer;
+
 		// All units to spawn, grouped by squads, squadless in the back
 		std::list<std::list<sp<BattleUnit>>> unitGroupsToSpawn;
 		// Add squadless
@@ -758,6 +768,7 @@ void Battle::initialUnitSpawn(GameState &state)
 				// Determine what kind of units we're trying to spawn
 				bool needWalker = false;
 				bool needLarge = false;
+				bool requestCivilian = false;
 				for (auto &u : unitsToSpawn)
 				{
 					if (u->isLarge())
@@ -768,99 +779,104 @@ void Battle::initialUnitSpawn(GameState &state)
 					{
 						needWalker = true;
 					}
+					if (baseDefendingSide && !u->agent->type->inventory)
+					{
+						requestCivilian = true;
+					}
 				}
 
 				// Make a list of priorities, in which order will we try to find a block
 				sp<SpawnBlock> block = nullptr;
 				std::list<std::list<sp<SpawnBlock>> *> priorityList;
+				auto spawnType = requestCivilian ? SpawnType::Civilian : spawnTypeMap[{f.first}];
 				if (needWalker && needLarge)
 				{
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                   UnitMovement::Walking, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                   UnitMovement::Walking, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                      UnitMovement::Walking, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                      UnitMovement::Walking, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Large, UnitMovement::Walking, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Large, UnitMovement::Walking, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Large, UnitMovement::Walking, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Large, UnitMovement::Walking, true}]);
 
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                   UnitMovement::Flying, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                   UnitMovement::Flying, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                      UnitMovement::Flying, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                      UnitMovement::Flying, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Large, UnitMovement::Flying, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Large, UnitMovement::Flying, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Large, UnitMovement::Flying, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Large, UnitMovement::Flying, true}]);
 
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                   UnitMovement::Walking, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                   UnitMovement::Walking, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                      UnitMovement::Walking, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                      UnitMovement::Walking, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Small, UnitMovement::Walking, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Small, UnitMovement::Walking, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Small, UnitMovement::Walking, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Small, UnitMovement::Walking, true}]);
 
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                   UnitMovement::Flying, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                   UnitMovement::Flying, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                      UnitMovement::Flying, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                      UnitMovement::Flying, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Small, UnitMovement::Flying, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Small, UnitMovement::Flying, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Small, UnitMovement::Flying, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Small, UnitMovement::Flying, true}]);
 				}
 				else if (needLarge)
 				{
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                   UnitMovement::Any, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                   UnitMovement::Any, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                      UnitMovement::Any, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Large,
-					                                      UnitMovement::Any, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Large, UnitMovement::Any, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Large, UnitMovement::Any, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Large, UnitMovement::Any, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Large, UnitMovement::Any, true}]);
 
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                   UnitMovement::Any, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                   UnitMovement::Any, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                      UnitMovement::Any, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Small,
-					                                      UnitMovement::Any, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Small, UnitMovement::Any, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Small, UnitMovement::Any, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Small, UnitMovement::Any, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Small, UnitMovement::Any, true}]);
 				}
 				else if (needWalker)
 				{
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                   UnitMovement::Walking, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                   UnitMovement::Walking, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                      UnitMovement::Walking, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                      UnitMovement::Walking, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Any, UnitMovement::Walking, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Any, UnitMovement::Walking, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Any, UnitMovement::Walking, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Any, UnitMovement::Walking, true}]);
 
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                   UnitMovement::Flying, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                   UnitMovement::Flying, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                      UnitMovement::Flying, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                      UnitMovement::Flying, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Any, UnitMovement::Flying, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Any, UnitMovement::Flying, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Any, UnitMovement::Flying, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Any, UnitMovement::Flying, true}]);
 				}
 				else
 				{
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                   UnitMovement::Any, false}]);
-					priorityList.push_back(&spawnMaps[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                   UnitMovement::Any, true}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                      UnitMovement::Any, false}]);
-					priorityList.push_back(&spawnInverse[{spawnTypeMap[{f.first}], UnitSize::Any,
-					                                      UnitMovement::Any, true}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Any, UnitMovement::Any, false}]);
+					priorityList.push_back(
+					    &spawnMaps[{spawnType, UnitSize::Any, UnitMovement::Any, true}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Any, UnitMovement::Any, false}]);
+					priorityList.push_back(
+					    &spawnInverse[{spawnType, UnitSize::Any, UnitMovement::Any, true}]);
 				}
 				priorityList.push_back(&spawnOther);
 
@@ -990,9 +1006,11 @@ void Battle::initialUnitSpawn(GameState &state)
 								numSpawned++;
 								if (unitsToSpawn.size() == 0
 								    // This makes us spawn every civilian and loner individually
-								    || (numSpawned > 0 && (u->getAIType() == AIType::None ||
-								                           u->getAIType() == AIType::Loner ||
-								                           u->getAIType() == AIType::Civilian)))
+								    // Except X-Com scientists
+								    || (numSpawned > 0 && !requestCivilian &&
+								        (u->getAIType() == AIType::None ||
+								         u->getAIType() == AIType::Loner ||
+								         u->getAIType() == AIType::Civilian)))
 								{
 									stopSpawning = true;
 									break;
@@ -1114,6 +1132,7 @@ sp<BattleUnit> Battle::spawnUnit(GameState &state, StateRef<Organisation> owner,
                                  Vec2<int> facing, BodyState curState, BodyState tarState)
 {
 	auto agent = state.agent_generator.createAgent(state, owner, agentType);
+	agent->city = state.current_city;
 	auto unit = state.current_battle->placeUnit(state, agent, position);
 	unit->falling = true;
 	if (facing.x == 0 && facing.y == 0)
@@ -1153,9 +1172,6 @@ sp<BattleExplosion> Battle::addExplosion(GameState &state, Vec3<int> position,
                                          int depletionRate, StateRef<Organisation> ownerOrg,
                                          StateRef<BattleUnit> ownerUnit)
 {
-	// FIXME: Actually read this option
-	bool USER_OPTION_EXPLOSIONS_DAMAGE_IN_THE_END = true;
-
 	// Doodad
 	if (!doodadType)
 	{
@@ -1171,9 +1187,9 @@ sp<BattleExplosion> Battle::addExplosion(GameState &state, Vec3<int> position,
 	}
 
 	// Explosion
-	auto explosion =
-	    mksp<BattleExplosion>(position, damageType, power, depletionRate,
-	                          USER_OPTION_EXPLOSIONS_DAMAGE_IN_THE_END, ownerOrg, ownerUnit);
+	auto explosion = mksp<BattleExplosion>(
+	    position, damageType, power, depletionRate,
+	    !config().getBool("OpenApoc.NewFeature.InstantExplosionDamage"), ownerOrg, ownerUnit);
 	explosions.insert(explosion);
 	return explosion;
 }
@@ -1187,7 +1203,7 @@ sp<BattleUnit> Battle::placeUnit(GameState &state, StateRef<Agent> agent)
 	unit->strategyImages = state.battle_common_image_list->strategyImages;
 	unit->genericHitSounds = state.battle_common_sample_list->genericHitSounds;
 	unit->squadNumber = -1;
-	unit->cloakTicksAccumulated = CLOAK_TICKS_REQUIRED;
+	unit->cloakTicksAccumulated = CLOAK_TICKS_REQUIRED_UNIT;
 	unit->initCryTimer(state);
 	unit->position = {-1.0, -1.0, -1.0};
 	units[id] = unit;
@@ -1338,9 +1354,10 @@ void Battle::updateProjectiles(GameState &state, unsigned int ticks)
 		auto p = *it++;
 		p->update(state, ticks);
 	}
-	for (auto it = this->projectiles.begin(); it != this->projectiles.end();)
+	// Since projectiles can kill projectiles just kill everyone in the end
+	std::set<std::tuple<sp<Projectile>, bool, bool>> deadProjectiles;
+	for (auto &p : projectiles)
 	{
-		auto &p = *it++;
 		notifyAction(p->position);
 		auto c = p->checkProjectileCollision(*map);
 		if (c)
@@ -1349,27 +1366,16 @@ void Battle::updateProjectiles(GameState &state, unsigned int ticks)
 			auto unit = c.projectile->trackedUnit;
 			if (unit)
 			{
-				if (unit->visibleUnits.find(c.projectile->firerUnit) == unit->visibleUnits.end())
-				{
-					LogWarning("Notify: unit %s that he's taking fire",
-					           c.projectile->trackedUnit.id);
-				}
-
 				unit->notifyUnderFire(state, c.projectile->firerPosition,
 				                      c.projectile->firerUnit->owner == unit->owner ||
 				                          visibleUnits[unit->owner].find(c.projectile->firerUnit) !=
 				                              visibleUnits[unit->owner].end());
 			}
 			// Handle collision
-			this->projectiles.erase(c.projectile);
 			bool playSound = true;
 			bool displayDoodad = true;
 			if (c.projectile->damageType->explosive)
 			{
-				auto explosion = addExplosion(
-				    state, c.position, c.projectile->doodadType, c.projectile->damageType,
-				    c.projectile->damage, c.projectile->depletionRate,
-				    c.projectile->firerUnit->owner, c.projectile->firerUnit);
 				displayDoodad = false;
 			}
 			else
@@ -1398,22 +1404,13 @@ void Battle::updateProjectiles(GameState &state, unsigned int ticks)
 						LogError("Collision with non-collidable object");
 				}
 			}
-			if (displayDoodad)
-			{
-				auto doodadType = c.projectile->doodadType;
-				if (doodadType)
-				{
-					auto doodad = this->placeDoodad(doodadType, c.position);
-				}
-			}
-			if (playSound)
-			{
-				if (c.projectile->impactSfx)
-				{
-					fw().soundBackend->playSample(c.projectile->impactSfx, c.position);
-				}
-			}
+			deadProjectiles.emplace(c.projectile->shared_from_this(), displayDoodad, playSound);
 		}
+	}
+	// Kill projectiles that collided
+	for (auto &p : deadProjectiles)
+	{
+		std::get<0>(p)->die(state, std::get<1>(p), std::get<2>(p));
 	}
 }
 
@@ -1505,8 +1502,11 @@ bool findLosBlockCenter(TileMap &map, BattleUnitType type,
 	return false;
 }
 
-void Battle::updatePathfinding(GameState &)
+void Battle::updatePathfinding(GameState &, unsigned int ticks)
 {
+	// Throttling updates so that big explosions won't lag
+	static const int LIMIT_PER_TICK = 10;
+
 	// How much attempts are given to the pathfinding until giving up and concluding that
 	// there is no path between two sectors. This is a multiplier for "distance", which is
 	// a minimum number of iterations required to pathfind between two locations
@@ -1554,6 +1554,8 @@ void Battle::updatePathfinding(GameState &)
 		}
 	}
 
+	int updatesRemaining = ticks > 0 ? LIMIT_PER_TICK * ticks : -1;
+
 	// Now update all paths
 	for (int i = 0; i < lbCount - 1; i++)
 	{
@@ -1562,6 +1564,14 @@ void Battle::updatePathfinding(GameState &)
 			if (!linkNeedsUpdate[i + j * lbCount])
 			{
 				continue;
+			}
+			if (updatesRemaining > 0)
+			{
+				updatesRemaining--;
+				if (updatesRemaining == 0)
+				{
+					return;
+				}
 			}
 			linkNeedsUpdate[i + j * lbCount] = false;
 
@@ -1588,7 +1598,7 @@ void Battle::updatePathfinding(GameState &)
 				auto path = mapRef.findShortestPath(
 				    blockCenterPos[type][i], blockCenterPos[type][j],
 				    distance * PATH_ITERATION_LIMIT_MULTIPLIER, helperMap[(int)type], false, true,
-				    true, &cost, distance * 4 * PATH_COST_LIMIT_MULTIPLIER);
+				    true, true, &cost, distance * 4 * PATH_COST_LIMIT_MULTIPLIER);
 
 				if (path.empty() || (*path.rbegin()) != blockCenterPos[type][j])
 				{
@@ -1603,12 +1613,6 @@ void Battle::updatePathfinding(GameState &)
 			}
 		}
 	}
-
-	// FIXME: Somehow introduce multi-threading here or throttle the load
-	// Calculating paths is the more costly operation here. If a big chunk of map is changed,
-	// it can take up to half a second to calculate. One option would be to calculate it
-	// in a different thread (maybe writing results to a different array, and then just swapping)
-	// Another option would be to throttle updates (have a limit on how many can be done per tick)
 }
 
 void Battle::update(GameState &state, unsigned int ticks)
@@ -1628,92 +1632,18 @@ void Battle::update(GameState &state, unsigned int ticks)
 	{
 		case Mode::TurnBased:
 		{
-			Trace::start("Battle::update::turnBased");
-			ticksWithoutAction += ticks;
-			for (auto &p : participants)
-			{
-				ticksWithoutSeenAction[p]++;
-			}
-			// Interrupt for lowmorales
-			if (!lowMoraleProcessed && interruptQueue.empty() && interruptUnits.empty())
-			{
-				lowMoraleProcessed = true;
-				for (auto &u : units)
-				{
-					if (u.second->owner != currentActiveOrganisation || !u.second->isConscious() ||
-					    u.second->moraleState == MoraleState::Normal ||
-					    u.second->agent->modified_stats.time_units == 0)
-					{
-						continue;
-					}
-					lowMoraleProcessed = false;
-					ticksWithoutAction = TICKS_BEGIN_INTERRUPT;
-					interruptQueue.emplace(StateRef<BattleUnit>(&state, u.first), 0);
-					if (u.second->owner == currentPlayer ||
-					    visibleUnits[currentPlayer].find({&state, u.first}) !=
-					        visibleUnits[currentPlayer].end())
-					{
-						fw().pushEvent(
-						    new GameLocationEvent(GameEventType::ZoomView, u.second->position));
-					}
-					break;
-				}
-			}
-			// Add units from queue to interrupt list
-			if (!interruptQueue.empty() && ticksWithoutAction >= TICKS_BEGIN_INTERRUPT)
-			{
-				for (auto &e : interruptQueue)
-				{
-					interruptUnits.emplace(e.first, e.second);
-				}
-				interruptQueue.clear();
-				notifyAction();
-				turnEndAllowed = false;
-			}
-			// Turn end condition
-			if (ticksWithoutAction >= TICKS_END_TURN)
-			{
-				if (interruptUnits.empty())
-				{
-					if (turnEndAllowed)
-					{
-						endTurn(state);
-					}
-				}
-				else
-				{
-					// Spend remaining TUs of low morale units
-					for (auto &e : interruptUnits)
-					{
-						if (e.first->moraleState != MoraleState::Normal)
-						{
-							e.first.getSp()->spendRemainingTU(state);
-							e.first.getSp()->focusUnit.clear();
-						}
-					}
-					interruptUnits.clear();
-					notifyAction();
-					turnEndAllowed = false;
-				}
-			}
-			Trace::end("Battle::end::turnBased");
+			Trace::start("Battle::updateTB");
+			updateTB(state);
+			Trace::end("Battle::updateTB");
+			break;
 		}
-		break;
 		case Mode::RealTime:
 		{
-			Trace::start("Battle::update::realTime");
-			if (reinforcementsInterval > 0)
-			{
-				ticksUntilNextReinforcement -= ticks;
-				while (ticksUntilNextReinforcement <= 0)
-				{
-					ticksUntilNextReinforcement += reinforcementsInterval;
-					spawnReinforcements(state);
-				}
-			}
-			Trace::end("Battle::end::realTime");
+			Trace::start("Battle::updateRT");
+			updateRT(state, ticks);
+			Trace::end("Battle::updateRT");
+			break;
 		}
-		break;
 	}
 	Trace::start("Battle::update::projectiles->update");
 	updateProjectiles(state, ticks);
@@ -1787,8 +1717,92 @@ void Battle::update(GameState &state, unsigned int ticks)
 	updateVision(state);
 	Trace::end("Battle::update::vision");
 	Trace::start("Battle::update::pathfinding");
-	updatePathfinding(state);
+	updatePathfinding(state, ticks);
 	Trace::end("Battle::update::pathfinding");
+}
+
+void Battle::updateTB(GameState &state)
+{
+	ticksWithoutAction++;
+	for (auto &p : participants)
+	{
+		ticksWithoutSeenAction[p]++;
+	}
+	// Interrupt for lowmorales
+	if (!lowMoraleProcessed && interruptQueue.empty() && interruptUnits.empty())
+	{
+		lowMoraleProcessed = true;
+		for (auto &u : units)
+		{
+			if (u.second->owner != currentActiveOrganisation || !u.second->isConscious() ||
+			    u.second->moraleState == MoraleState::Normal ||
+			    u.second->agent->modified_stats.time_units == 0)
+			{
+				continue;
+			}
+			lowMoraleProcessed = false;
+			ticksWithoutAction = TICKS_BEGIN_INTERRUPT;
+			interruptQueue.emplace(StateRef<BattleUnit>(&state, u.first), 0);
+			if (u.second->owner == currentPlayer ||
+			    visibleUnits[currentPlayer].find({&state, u.first}) !=
+			        visibleUnits[currentPlayer].end())
+			{
+				fw().pushEvent(new GameLocationEvent(GameEventType::ZoomView, u.second->position));
+			}
+			break;
+		}
+	}
+	// Add units from queue to interrupt list
+	if (!interruptQueue.empty() && ticksWithoutAction >= TICKS_BEGIN_INTERRUPT)
+	{
+		for (auto &e : interruptQueue)
+		{
+			interruptUnits.emplace(e.first, e.second);
+		}
+		interruptQueue.clear();
+		notifyAction();
+		turnEndAllowed = false;
+	}
+	// Turn end condition
+	if (ticksWithoutAction >= TICKS_END_TURN)
+	{
+		if (interruptUnits.empty())
+		{
+			if (turnEndAllowed)
+			{
+				endTurn(state);
+			}
+		}
+		else
+		{
+			// Spend remaining TUs of low morale units
+			for (auto &e : interruptUnits)
+			{
+				if (e.first->moraleState != MoraleState::Normal)
+				{
+					e.first.getSp()->spendRemainingTU(state);
+					e.first.getSp()->focusUnit.clear();
+				}
+			}
+			interruptUnits.clear();
+			notifyAction();
+			turnEndAllowed = false;
+		}
+	}
+}
+
+void Battle::updateRT(GameState &state, unsigned int ticks)
+{
+	// Spawn reinforcements
+	if (reinforcementsInterval > 0)
+	{
+		ticksUntilNextReinforcement -= ticks;
+		while (ticksUntilNextReinforcement <= 0)
+		{
+			ticksUntilNextReinforcement += reinforcementsInterval;
+			spawnReinforcements(state);
+		}
+	}
 }
 
 void Battle::updateTBBegin(GameState &state)
@@ -1886,15 +1900,75 @@ void Battle::notifyAction(Vec3<int> location, StateRef<BattleUnit> actorUnit)
 	}
 }
 
-int Battle::killStrandedUnits(GameState &state, bool preview)
+int Battle::killStrandedUnits(GameState &state, StateRef<Organisation> org, bool preview)
 {
-	LogWarning("Implement killing stranded player units");
-	return 0;
+	int countKilled = 0;
+
+	for (auto &u : units)
+	{
+		if (u.second->owner != org || u.second->isDead())
+		{
+			continue;
+		}
+		// Find closest exit
+		float distanceToExit = FLT_MAX;
+		for (auto &e : exits)
+		{
+			float distance = glm::length(u.second->position - (Vec3<float>)e);
+			if (distance < distanceToExit)
+			{
+				distanceToExit = distance;
+			}
+		}
+		// Find closest enemy from org that sees us
+		float distanceToEnemy = FLT_MAX;
+		for (auto &owner : participants)
+		{
+			if (owner == org || owner->isRelatedTo(org) != Organisation::Relation::Hostile)
+			{
+				continue;
+			}
+			for (auto &spotted : visibleUnits.at(owner))
+			{
+				if (spotted.id != u.first)
+				{
+					continue;
+				}
+				// Org sees this unit
+				// Look for closest unit from this org
+				for (auto &e : units)
+				{
+					if (e.second->owner != owner || e.second->isDead())
+					{
+						continue;
+					}
+					float distance = glm::length(u.second->position - e.second->position);
+					if (distance < distanceToEnemy)
+					{
+						distanceToEnemy = distance;
+					}
+				}
+				// No need to look further, we already processed this org
+				break;
+			}
+		}
+		// Exit must be three times closer than enemy for escape to be possible
+		if (distanceToEnemy / 3.0f < distanceToExit)
+		{
+			countKilled++;
+			if (!preview)
+			{
+				u.second->agent->modified_stats.health = 0;
+				u.second->die(state);
+			}
+		}
+	}
+	return countKilled;
 }
 
 void Battle::abortMission(GameState &state)
 {
-	killStrandedUnits(state);
+	killStrandedUnits(state, currentPlayer);
 	auto player = state.getPlayer();
 	for (auto &u : units)
 	{
@@ -1962,10 +2036,16 @@ void Battle::checkMissionEnd(GameState &state, bool retreated, bool forceReCheck
 
 void Battle::checkIfBuildingDisabled(GameState &state)
 {
-	if (!buildingCanBeDisabled || buildingDisabled)
+	if (!buildingCanBeDisabled || buildingDisabled || !tryDisableBuilding())
 	{
 		return;
 	}
+	buildingDisabled = true;
+	fw().pushEvent(new GameEvent(GameEventType::BuildingDisabled));
+}
+
+bool Battle::tryDisableBuilding()
+{
 	// Find a mission objective unit
 	for (auto &u : units)
 	{
@@ -1976,7 +2056,7 @@ void Battle::checkIfBuildingDisabled(GameState &state)
 		if (u.second->agent->type->missionObjective && !u.second->isDead())
 		{
 			// Mission objective unit found alive
-			return;
+			return false;
 		}
 	}
 	// Find a mission objective object
@@ -1985,12 +2065,11 @@ void Battle::checkIfBuildingDisabled(GameState &state)
 		if (mp->type->missionObjective && !mp->destroyed)
 		{
 			// Mission objective unit found alive
-			return;
+			return false;
 		}
 	}
 	// Found nothing, building disabled
-	buildingDisabled = true;
-	fw().pushEvent(new GameEvent(GameEventType::BuildingDisabled));
+	return true;
 }
 
 void Battle::refreshLeadershipBonus(StateRef<Organisation> org)
@@ -2084,6 +2163,27 @@ void Battle::spawnReinforcements(GameState &state)
 	}
 }
 
+void Battle::handleProjectileHit(GameState &state, sp<Projectile> projectile, bool displayDoodad,
+                                 bool playSound)
+{
+	if (projectile->damageType->explosive)
+	{
+		auto explosion =
+		    addExplosion(state, projectile->position, projectile->doodadType,
+		                 projectile->damageType, projectile->damage, projectile->depletionRate,
+		                 projectile->firerUnit->owner, projectile->firerUnit);
+	}
+	if (displayDoodad && projectile->doodadType)
+	{
+		this->placeDoodad(projectile->doodadType, projectile->position);
+	}
+	if (playSound && projectile->impactSfx)
+	{
+		fw().soundBackend->playSample(projectile->impactSfx, projectile->position);
+	}
+	projectiles.erase(projectile);
+}
+
 void Battle::queuePathfindingRefresh(Vec3<int> tile)
 {
 	blockNeedsUpdate[getLosBlockID(tile.x, tile.y, tile.z)] = true;
@@ -2123,9 +2223,10 @@ void Battle::queuePathfindingRefresh(Vec3<int> tile)
 void Battle::accuracyAlgorithmBattle(GameState &state, Vec3<float> firePosition,
                                      Vec3<float> &target, int accuracy, bool cloaked, bool thrown)
 {
-	auto dispersion = (float)(100 - accuracy);
+	float dispersion = 100 - accuracy;
 	// Introduce minimal dispersion?
 	dispersion = std::max(0.0f, dispersion);
+
 	if (cloaked)
 	{
 		dispersion *= dispersion;
@@ -2279,7 +2380,8 @@ void Battle::giveInterruptChanceToUnit(GameState &state, StateRef<BattleUnit> gi
 }
 
 // To be called when battle must be started, before showing battle briefing screen
-void Battle::beginBattle(GameState &state, bool hotseat, StateRef<Organisation> target_organisation,
+// In case battle is in a craft (UFO)
+void Battle::beginBattle(GameState &state, bool hotseat, StateRef<Organisation> opponent,
                          std::list<StateRef<Agent>> &player_agents,
                          const std::map<StateRef<AgentType>, int> *aliens,
                          StateRef<Vehicle> player_craft, StateRef<Vehicle> target_craft)
@@ -2289,8 +2391,8 @@ void Battle::beginBattle(GameState &state, bool hotseat, StateRef<Organisation> 
 		LogError("Battle::beginBattle called while another battle is in progress!");
 		return;
 	}
-	auto b = BattleMap::createBattle(state, target_organisation, player_agents, aliens,
-	                                 player_craft, target_craft);
+	auto b =
+	    BattleMap::createBattle(state, opponent, player_agents, aliens, player_craft, target_craft);
 	if (!b)
 	{
 		return;
@@ -2301,7 +2403,8 @@ void Battle::beginBattle(GameState &state, bool hotseat, StateRef<Organisation> 
 }
 
 // To be called when battle must be started, before showing battle briefing screen
-void Battle::beginBattle(GameState &state, bool hotseat, StateRef<Organisation> target_organisation,
+// In case battle is in a building
+void Battle::beginBattle(GameState &state, bool hotseat, StateRef<Organisation> opponent,
                          std::list<StateRef<Agent>> &player_agents,
                          const std::map<StateRef<AgentType>, int> *aliens, const int *guards,
                          const int *civilians, StateRef<Vehicle> player_craft,
@@ -2312,15 +2415,15 @@ void Battle::beginBattle(GameState &state, bool hotseat, StateRef<Organisation> 
 		LogError("Battle::beginBattle called while another battle is in progress!");
 		return;
 	}
-	auto b = BattleMap::createBattle(state, target_organisation, player_agents, aliens, guards,
-	                                 civilians, player_craft, target_building);
+	auto b = BattleMap::createBattle(state, opponent, player_agents, aliens, guards, civilians,
+	                                 player_craft, target_building);
 	if (!b)
 	{
 		return;
 	}
 	b->hotseat = hotseat;
 	b->locationOwner = target_building->owner;
-	b->buildingCanBeDisabled = target_organisation == state.getAliens();
+	b->buildingCanBeDisabled = !b->tryDisableBuilding();
 	state.current_battle = b;
 }
 
@@ -2339,6 +2442,18 @@ void Battle::enterBattle(GameState &state)
 	state.current_battle->initialUnitSpawn(state);
 
 	state.current_battle->initBattle(state, true);
+
+	if (b->mission_type == MissionType::BaseDefense)
+	{
+		for (size_t i = 0; i < b->visibleTiles[b->locationOwner].size(); i++)
+		{
+			b->visibleTiles[b->locationOwner][i] = true;
+		}
+		for (size_t i = 0; i < b->visibleBlocks[b->locationOwner].size(); i++)
+		{
+			b->visibleBlocks[b->locationOwner][i] = true;
+		}
+	}
 
 	for (auto &u : state.current_battle->units)
 	{
@@ -2367,6 +2482,9 @@ void Battle::enterBattle(GameState &state)
 		state.current_battle->battleViewZLevel = (int)ceilf(firstPlayerUnit->position.z);
 	}
 	state.current_battle->battleViewGroupMove = true;
+
+	// Remember time
+	state.updateBeforeBattle();
 }
 
 // To be called when battle must be finished and before showing score screen
@@ -2379,6 +2497,7 @@ void Battle::finishBattle(GameState &state)
 	}
 
 	auto player = state.getPlayer();
+	auto aliens = state.getAliens();
 	state.current_battle->unloadResources(state);
 
 	// Remove active battle scanners
@@ -2389,6 +2508,7 @@ void Battle::finishBattle(GameState &state)
 			e->battleScanner.clear();
 		}
 	}
+
 	// Proces MCed units
 	for (auto &u : state.current_battle->units)
 	{
@@ -2411,13 +2531,243 @@ void Battle::finishBattle(GameState &state)
 			u.second->owner = u.second->agent->owner;
 		}
 	}
+
+	// Loot (temporary storage for items that become loot)
+	std::list<sp<AEquipment>> loot;
+
 	//	- Prepare list of surviving aliens
-	//	- (Success) Convert remaining unconscious and dead aliens into research items
-	//  - Remove brainsucker pods from agent inventories and convert into research items
-	//  - Calculate score for live captured aliens
-	//  - (Failure) Handle remaining aliens (retreat them if ufo, put them in the building if
-	//  building)
-	//  - Handle retreated aliens (put them to random closest building)
+	std::list<sp<BattleUnit>> retreatedAliens;
+	std::list<sp<BattleUnit>> liveAliens;
+	std::list<sp<BattleUnit>> deadAliens;
+	for (auto &u : state.current_battle->units)
+	{
+		if (u.second->owner != aliens)
+		{
+			continue;
+		}
+		if (u.second->retreated)
+		{
+			retreatedAliens.push_back(u.second);
+		}
+		else if (u.second->isDead())
+		{
+			deadAliens.push_back(u.second);
+		}
+		else
+		{
+			liveAliens.push_back(u.second);
+		}
+	}
+
+	// Process player agents
+	// - strip them of bio items and artifacts
+	// - strip dead ones
+	// - mark as fought
+	// - give mission to return if need to
+	for (auto &u : state.current_battle->units)
+	{
+		if (u.second->owner != player)
+		{
+			continue;
+		}
+		u.second->agent->recentlyFought = true;
+		std::list<sp<AEquipment>> itemsToStrip;
+		for (auto &e : u.second->agent->equipment)
+		{
+			if (u.second->isDead() || e->type->bioStorage || !e->type->canBeUsed(state, player) ||
+			    (e->payloadType && !e->payloadType->canBeUsed(state, player)))
+			{
+				itemsToStrip.push_back(e);
+			}
+			else
+			{
+				// Reward for captured loot that stayed on agents
+				if (e->ownerOrganisation != player)
+				{
+					state.current_battle->score.equipmentCaptured += e->type->score;
+				}
+			}
+		}
+		for (auto &e : itemsToStrip)
+		{
+			u.second->agent->removeEquipment(state, e);
+			auto clip = e->unloadAmmo();
+			if (clip)
+			{
+				loot.push_back(clip);
+			}
+			loot.push_back(e);
+		}
+		// Send home if not on vehicle
+		if (!u.second->agent->currentVehicle && !state.current_battle->skirmish)
+		{
+			u.second->agent->setMission(state, AgentMission::gotoBuilding(state, *u.second->agent));
+		}
+	}
+
+	// If player won and didn't retreat, player secures the area
+	// - give him loot
+	// - give him alien remains
+	if (state.current_battle->playerWon && !state.current_battle->winnerHasRetreated)
+	{
+		bool playerHasBioStorage = state.current_battle->player_craft &&
+		                           state.current_battle->player_craft->getMaxBio() > 0;
+		// Live alien loot
+		for (auto &u : liveAliens)
+		{
+			if (u->agent->type->liveSpeciesItem)
+			{
+				if (playerHasBioStorage)
+				{
+					state.current_battle->score.liveAlienCaptured +=
+					    u->agent->type->liveSpeciesItem->score;
+				}
+				if (u->agent->type->liveSpeciesItem->bioStorage)
+				{
+					state.current_battle->bioLoot[u->agent->type->liveSpeciesItem] =
+					    state.current_battle->bioLoot[u->agent->type->liveSpeciesItem] + 1;
+				}
+				else
+				{
+					state.current_battle->cargoLoot[u->agent->type->liveSpeciesItem] =
+					    state.current_battle->cargoLoot[u->agent->type->liveSpeciesItem] + 1;
+				}
+			}
+			else
+			{
+				// Maybe alien has only a dead option?
+				deadAliens.push_back(u);
+			}
+		}
+		// Dead alien loot
+		for (auto &u : deadAliens)
+		{
+			if (u->agent->type->deadSpeciesItem)
+			{
+				if (u->agent->type->deadSpeciesItem->bioStorage)
+				{
+					state.current_battle->bioLoot[u->agent->type->deadSpeciesItem] =
+					    state.current_battle->bioLoot[u->agent->type->deadSpeciesItem] + 1;
+				}
+				else
+				{
+					state.current_battle->cargoLoot[u->agent->type->deadSpeciesItem] =
+					    state.current_battle->cargoLoot[u->agent->type->deadSpeciesItem] + 1;
+				}
+			}
+		}
+		// Item loot
+		for (auto &e : state.current_battle->items)
+		{
+			loot.push_back(e->item);
+		}
+		LogWarning("Implement UFO parts loot");
+	}
+	// Player didn't secure the area
+	// - doesn't get loot
+	// - kill all items (and make player suffer penalties)
+	// - deal with surviving aliens
+	else
+	{
+		std::list<sp<BattleItem>> itemsToKill;
+		for (auto &e : state.current_battle->items)
+		{
+			itemsToKill.push_back(e);
+		}
+		for (auto &e : itemsToKill)
+		{
+			e->die(state, false);
+		}
+		// If UFO - aliens retreat,
+		if (state.current_battle->mission_type == Battle::MissionType::UfoRecovery)
+		{
+			for (auto &a : liveAliens)
+			{
+				retreatedAliens.push_back(a);
+			}
+		}
+		// If non-alien building - aliens get back in
+		// If alien building - all aliens vanish
+		else
+		{
+			StateRef<Building> location = {&state, state.current_battle->mission_location_id};
+			if (location->owner != aliens)
+			{
+				for (auto &a : liveAliens)
+				{
+					location->current_crew[a->agent->type] =
+					    location->current_crew[a->agent->type] + 1;
+				}
+			}
+			else
+			{
+				liveAliens.clear();
+				retreatedAliens.clear();
+			}
+		}
+	}
+	// Regardless what happened, give player loot (if player retreated - will only get agent loot)
+	for (auto &e : loot)
+	{
+		// Reward for captured loot
+		if (e->ownerOrganisation != player)
+		{
+			state.current_battle->score.equipmentCaptured += e->type->score;
+		}
+		int mult = e->type->type == AEquipmentType::Type::Ammo ? e->ammo : 1;
+		if (e->type->bioStorage)
+		{
+			state.current_battle->bioLoot[e->type] = state.current_battle->bioLoot[e->type] + mult;
+		}
+		else
+		{
+			state.current_battle->cargoLoot[e->type] =
+			    state.current_battle->cargoLoot[e->type] + mult;
+		}
+	}
+	// Regardless of what happened, retreated aliens go to a nearby building
+	if (!retreatedAliens.empty())
+	{
+		// FIXME: Should find 15 closest buildings that are intact and within 15 tiles
+		// (center to center) and pick one of them
+		LogWarning("Properly find building to house retreated aliens");
+		Vec2<int> battleLocation;
+		StateRef<City> city;
+		if (state.current_battle->mission_type == Battle::MissionType::UfoRecovery)
+		{
+			StateRef<Vehicle> location = {&state, state.current_battle->mission_location_id};
+			city = location->city;
+			battleLocation = {location->position.x, location->position.y};
+		}
+		else
+		{
+			StateRef<Building> location = {&state, state.current_battle->mission_location_id};
+			city = location->city;
+			battleLocation = location->bounds.p0;
+		}
+		StateRef<Building> closestBuilding;
+		int closestDistance = INT_MAX;
+		for (auto &b : city->buildings)
+		{
+			int distance = std::abs(b.second->bounds.p0.x - battleLocation.x) +
+			               std::abs(b.second->bounds.p0.y - battleLocation.y);
+			if (distance < closestDistance)
+			{
+				closestDistance = distance;
+				closestBuilding = {&state, b.first};
+			}
+		}
+		if (!closestBuilding)
+		{
+			LogError("WTF? No building in city closer than INT_MAX?");
+			return;
+		}
+		for (auto &a : retreatedAliens)
+		{
+			closestBuilding->current_crew[a->agent->type] =
+			    closestBuilding->current_crew[a->agent->type] + 1;
+		}
+	}
 	// Remove dead player agents and all enemy agents from the game and from vehicles
 	std::list<sp<BattleUnit>> unitsToRemove;
 	for (auto &u : state.current_battle->units)
@@ -2429,16 +2779,22 @@ void Battle::finishBattle(GameState &state)
 	}
 	for (auto &u : unitsToRemove)
 	{
+		u->agent->die(state, true);
 		u->agent->destroy();
 		state.agents.erase(u->agent.id);
 		u->destroy();
 		state.current_battle->units.erase(u->id);
 	}
+
 	// Apply experience to stats of living agents + promotions
 	// Create list of units ranked by combatRating
 	std::map<int, std::list<sp<BattleUnit>>> unitsByRating;
 	for (auto &u : state.current_battle->units)
 	{
+		if (!u.second->agent->type->allowsDirectControl)
+		{
+			continue;
+		}
 		u.second->processExperience(state);
 		unitsByRating[-u.second->combatRating].push_back(u.second);
 	}
@@ -2446,6 +2802,11 @@ void Battle::finishBattle(GameState &state)
 	std::map<Rank, int> countRanks;
 	for (auto &a : state.agents)
 	{
+		if (!a.second->type->allowsDirectControl ||
+		    a.second->type->role != AgentType::Role::Soldier)
+		{
+			continue;
+		}
 		countRanks[a.second->rank]++;
 	}
 	// Rank up top 5 units from list that can accept promotion
@@ -2508,12 +2869,6 @@ void Battle::finishBattle(GameState &state)
 			break;
 		}
 	}
-	//  - (Failure) Kill all items on the battlefield
-	//	- (Success) Prepare list of loot (including alien saucer equipment), give score for it
-	//  - Move unresearched items from agent inventory into loot list
-	//  - Convert living aliens to bodies if no bio trans
-	//	- Calculate score for captured loot
-	//  - Calculate score for captured live aliens
 }
 
 // To be called after battle was finished, score screen was shown and before returning to cityscape
@@ -2525,20 +2880,59 @@ void Battle::exitBattle(GameState &state)
 		return;
 	}
 
-	//  - Apply score to player score
-	// (UFO mission) Remove UFO crash
-	if (state.current_battle->mission_type == Battle::MissionType::UfoRecovery)
+	// Fake battle, remove fake stuff, restore relationships
+	if (state.current_battle->skirmish)
 	{
-		StateRef<Vehicle> ufo = {&state, state.current_battle->mission_location_id};
-		if (state.current_battle->playerWon)
+		// Erase agents
+		std::list<UString> agentsToRemove;
+		for (auto &a : state.agents)
 		{
-			LogWarning("FIXME: Give player score for captured ufo");
+			if (!a.second->city)
+			{
+				if (a.second->currentBuilding)
+				{
+					a.second->currentBuilding->currentAgents.erase({&state, a.first});
+				}
+				if (a.second->currentVehicle)
+				{
+					a.second->currentVehicle->currentAgents.erase({&state, a.first});
+				}
+				agentsToRemove.push_back(a.first);
+			}
 		}
-		state.vehicles.erase(ufo.id);
+		for (auto &a : agentsToRemove)
+		{
+			state.agents.erase(a);
+		}
+
+		// Erase base and building
+		StateRef<Base> fakeBase = {&state, "SKIRMISH_BASE"};
+		auto city = fakeBase->building->city;
+		fakeBase->building->currentAgents.clear();
+		fakeBase->building->base.clear();
+		fakeBase->building.clear();
+		city->buildings.erase("SKIRMISH_BUILDING");
+		state.player_bases.erase("SKIRMISH_BASE");
+
+		// Erase vehicle
+		if (state.current_battle->player_craft)
+		{
+			state.current_battle->player_craft->die(state, true);
+		}
+
+		// Restore relationships
+		for (auto e : state.current_battle->relationshipsBeforeSkirmish)
+		{
+			auto org = e.first;
+			org->current_relations[state.getPlayer()] = e.second;
+			state.getPlayer()->current_relations[e.first] = e.second;
+		}
+
+		// That's it for fake battle, return
+		state.current_battle = nullptr;
+		return;
 	}
-	//  - (If mod then give player choice of what to load and what to leave behind)
-	//	- Load loot into vehicles
-	//	- Load aliens into bio - trans
+
 	// Restore X-Com relationship to organisations
 	auto player = state.getPlayer();
 	for (auto &o : state.organisations)
@@ -2550,18 +2944,306 @@ void Battle::exitBattle(GameState &state)
 		player->current_relations[{&state, o.first}] = o.second->getRelationTo(player);
 	}
 
-	LogWarning(
-	    "Checking item reference consistency, remove code in battle.exitBattleconfirmed correct");
-	for (auto &a : state.agents)
+	// Apply score to player score
+	LogWarning("Apply score to player score");
+
+	// LOOT!
+
+	// Compile list of player vehicles
+	std::list<StateRef<Vehicle>> playerVehicles;
+	std::set<StateRef<Vehicle>> returningVehicles;
+	if (state.current_battle->player_craft)
 	{
-		for (auto &e : a.second->equipment)
+		playerVehicles.push_back(state.current_battle->player_craft);
+		returningVehicles.insert(state.current_battle->player_craft);
+	}
+	if (config().getBool("OpenApoc.NewFeature.AllowNearbyVehicleLootPickup"))
+	{
+		if (state.current_battle->mission_type == Battle::MissionType::UfoRecovery)
 		{
-			if (e->ownerUnit)
+			Vec2<int> battleLocation;
+			StateRef<City> city;
+			StateRef<Vehicle> location = {&state, state.current_battle->mission_location_id};
+			city = location->city;
+
+			for (auto &v : state.vehicles)
 			{
-				LogError("Agent %s has item %s which is assigned to unit %s and will leak", a.first,
-				         e->type.id, e->ownerUnit.id);
+				// Check every player owned vehicle located in city
+				if (v.second->owner != player || v.second->city != city || v.second->currentBuilding
+				    // Player's vehicle was already added and has priority
+				    || v.first == state.current_battle->player_craft.id)
+				{
+					continue;
+				}
+				if (glm::length(location->position - v.second->position) < VEHICLE_NEARBY_THRESHOLD)
+				{
+					playerVehicles.emplace_back(&state, v.first);
+				}
 			}
 		}
+		else
+		{
+			StateRef<Building> location = {&state, state.current_battle->mission_location_id};
+			for (auto &v : location->currentVehicles)
+			{
+				// Player's vehicle was already added and has priority
+				if (v->owner == player && v != state.current_battle->player_craft)
+				{
+					playerVehicles.push_back(v);
+				}
+			}
+		}
+	}
+
+	// List of bio-containment leftover loot
+	std::map<StateRef<AEquipmentType>, int> leftoverBioLoot;
+	// List of cargo bay leftover loot
+	std::map<StateRef<AEquipmentType>, int> leftoverCargoLoot;
+
+	// Check cargo limits (this can move loot into leftover loot)
+	if (config().getBool("OpenApoc.NewFeature.EnforceCargoLimits"))
+	{
+		LogWarning("Implement feature: Enforce containment limits");
+
+		// FIXME: Implement enforce cargo limits
+		// Basically here we should open a window where we offer to leave behind
+		// loot that won't fit combined cargo capacity and alien capacity of player craft
+		// That loot is moved to leftover loot
+	}
+
+	// If player has no vehicles all loot goes to leftover loot
+	if (playerVehicles.empty())
+	{
+		for (auto &e : state.current_battle->cargoLoot)
+		{
+			leftoverCargoLoot[e.first] = e.second;
+		}
+		state.current_battle->cargoLoot.clear();
+		for (auto &e : state.current_battle->bioLoot)
+		{
+			leftoverBioLoot[e.first] = e.second;
+		}
+		state.current_battle->bioLoot.clear();
+	}
+
+	// Bio loot remaining?
+	if (!leftoverBioLoot.empty())
+	{
+		// Bio loot is wasted if can't be loaded on player craft
+	}
+
+	// Cargo loot remaining?
+	if (leftoverCargoLoot.empty())
+	{
+		if (config().getBool("OpenApoc.NewFeature.AllowBuildingLootDeposit"))
+		{
+			if (state.current_battle->mission_type == Battle::MissionType::UfoRecovery)
+			{
+				// Still cant't do anything if we're recovering UFO
+			}
+			else
+			{
+				// Deposit loot into building, call for pickup
+				StateRef<Building> location = {&state, state.current_battle->mission_location_id};
+				auto homeBuilding =
+				    playerVehicles.empty() ? nullptr : playerVehicles.front()->homeBuilding;
+				if (!homeBuilding)
+				{
+					homeBuilding = state.player_bases.begin()->second->building;
+				}
+				for (auto &e : leftoverCargoLoot)
+				{
+					int price = 0;
+					if (state.economy.find(e.first.id) != state.economy.end())
+					{
+						price = state.economy[e.first.id].currentPrice;
+					}
+					location->cargo.emplace_back(state, e.first, e.second, price, nullptr,
+					                             homeBuilding);
+				}
+			}
+		}
+	}
+
+	// Load cargo/bio into vehicles
+	if (!playerVehicles.empty())
+	{
+		// Go through every loot position
+		// Try to load into every vehicle until amount remaining is zero
+		std::list<StateRef<AEquipmentType>> cargoLootToRemove;
+		for (auto &e : state.current_battle->cargoLoot)
+		{
+			for (auto &v : playerVehicles)
+			{
+				if (e.second == 0)
+				{
+					continue;
+				}
+				int divisor = e.first->type == AEquipmentType::Type::Ammo ? e.first->max_ammo : 1;
+				int maxAmount = config().getBool("OpenApoc.NewFeature.EnforceCargoLimits")
+				                    ? std::min(e.second,
+				                               (v->getMaxCargo() - v->getCargo()) /
+				                                   e.first->store_space * divisor)
+				                    : e.second;
+				if (maxAmount > 0)
+				{
+					e.second -= maxAmount;
+					int price = 0;
+					if (state.economy.find(e.first.id) != state.economy.end())
+					{
+						price = state.economy[e.first.id].currentPrice;
+					}
+					v->cargo.emplace_back(state, e.first, maxAmount, price, nullptr,
+					                      v->homeBuilding);
+					returningVehicles.insert(v);
+				}
+			}
+			if (e.second == 0)
+			{
+				cargoLootToRemove.push_back(e.first);
+			}
+		}
+		for (auto &e : cargoLootToRemove)
+		{
+			state.current_battle->cargoLoot.erase(e);
+		}
+		// Go through every bio loot position
+		// Try to load into every vehicle until amount remaining is zero
+		std::list<StateRef<AEquipmentType>> bioLootToRemove;
+		for (auto &e : state.current_battle->bioLoot)
+		{
+			for (auto &v : playerVehicles)
+			{
+				if (e.second == 0)
+				{
+					continue;
+				}
+				int divisor = e.first->type == AEquipmentType::Type::Ammo ? e.first->max_ammo : 1;
+				int maxAmount =
+				    config().getBool("OpenApoc.NewFeature.EnforceCargoLimits")
+				        ? std::min(e.second,
+				                   (v->getMaxBio() - v->getBio()) / e.first->store_space * divisor)
+				        : e.second;
+				if (maxAmount > 0)
+				{
+					e.second -= maxAmount;
+					int price = 0;
+					if (state.economy.find(e.first.id) != state.economy.end())
+					{
+						price = state.economy[e.first.id].currentPrice;
+					}
+					v->cargo.emplace_back(state, e.first, maxAmount, price, nullptr,
+					                      v->homeBuilding);
+					returningVehicles.insert(v);
+				}
+			}
+			if (e.second == 0)
+			{
+				bioLootToRemove.push_back(e.first);
+			}
+		}
+		for (auto &e : bioLootToRemove)
+		{
+			state.current_battle->bioLoot.erase(e);
+		}
+	}
+
+	// Give player vehicle a null cargo just so it comes back to base once
+	for (auto v : returningVehicles)
+	{
+		v->cargo.emplace_front(
+		    state, StateRef<AEquipmentType>(&state, state.agent_equipment.begin()->first), 0, 0,
+		    nullptr, v->homeBuilding);
+		v->setMission(state, VehicleMission::gotoBuilding(state, *v));
+		v->addMission(state, VehicleMission::offerService(state, *v), true);
+	}
+
+	// Event and result
+	// FIXME: IS there a better way to pass events? They get cleared if we just pushEvent() them!
+	bool victory = false;
+	switch (state.current_battle->mission_type)
+	{
+		case Battle::MissionType::RaidAliens:
+		{
+			if (state.current_battle->playerWon)
+			{
+				state.eventFromBattle = GameEventType::MissionCompletedBuildingAlien;
+				auto building =
+				    StateRef<Building>(&state, state.current_battle->mission_location_id);
+				for (auto &u : building->researchUnlock)
+				{
+					u->forceComplete();
+				}
+				victory = building->victory;
+				building->collapse(state);
+				for (auto v : returningVehicles)
+				{
+					v->addMission(state, VehicleMission::snooze(state, *v, 3 * TICKS_PER_SECOND));
+				}
+			}
+			break;
+		}
+		case Battle::MissionType::AlienExtermination:
+		{
+			state.eventFromBattle = GameEventType::MissionCompletedBuildingNormal;
+			break;
+		}
+		case Battle::MissionType::BaseDefense:
+		{
+			if (state.current_battle->playerWon)
+			{
+				state.eventFromBattle = GameEventType::MissionCompletedBase;
+			}
+			else
+			{
+				auto building =
+				    StateRef<Building>{&state, state.current_battle->mission_location_id};
+				state.eventFromBattle = GameEventType::BaseDestroyed;
+				state.eventFromBattleText = building->base->name;
+				building->base->die(state, false);
+			}
+			break;
+		}
+		case Battle::MissionType::RaidHumans:
+		{
+			state.eventFromBattle = GameEventType::MissionCompletedBuildingRaid;
+			if (state.current_battle->playerWon)
+			{
+				auto building =
+				    StateRef<Building>(&state, state.current_battle->mission_location_id);
+				for (auto &u : building->researchUnlock)
+				{
+					u->forceComplete();
+				}
+				victory = building->victory;
+				if (config().getBool("OpenApoc.NewFeature.CollapseRaidedBuilding"))
+				{
+					building->collapse(state);
+					for (auto v : returningVehicles)
+					{
+						v->addMission(state,
+						              VehicleMission::snooze(state, *v, 3 * TICKS_PER_SECOND));
+					}
+				}
+			}
+			break;
+		}
+		case Battle::MissionType::UfoRecovery:
+		{
+			state.eventFromBattle = GameEventType::MissionCompletedVehicle;
+			auto vehicle = StateRef<Vehicle>(&state, state.current_battle->mission_location_id);
+			for (auto &u : vehicle->type->researchUnlock)
+			{
+				u->forceComplete();
+			}
+			vehicle->die(state, true);
+			break;
+		}
+	}
+
+	if (victory)
+	{
+		LogError("You won, but we have no screen for that yet LOL!");
 	}
 
 	state.current_battle = nullptr;

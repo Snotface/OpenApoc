@@ -9,8 +9,8 @@
 #include "framework/renderer.h"
 #include "game/state/gameevent.h"
 #include "game/state/gamestate.h"
-#include "game/ui/battle/battleview.h"
-#include "game/ui/city/cityview.h"
+#include "game/ui/tileview/battleview.h"
+#include "game/ui/tileview/cityview.h"
 #include <algorithm>
 #include <cmath>
 
@@ -23,8 +23,9 @@ ConfigOptionBool asyncLoading("Game", "ASyncLoading",
 LoadingScreen::LoadingScreen(sp<GameState> state, std::shared_future<void> task,
                              std::function<sp<Stage>()> nextScreenFn, sp<Image> background,
                              int scaleDivisor, bool showRotatingImage)
-    : Stage(), state(state), loadingTask(std::move(task)), nextScreenFn(std::move(nextScreenFn)),
-      backgroundimage(background), showRotatingImage(showRotatingImage), scaleDivisor(scaleDivisor)
+    : Stage(), loadingTask(std::move(task)), nextScreenFn(std::move(nextScreenFn)),
+      backgroundimage(background), showRotatingImage(showRotatingImage), scaleDivisor(scaleDivisor),
+      state(state)
 {
 }
 

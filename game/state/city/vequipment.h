@@ -1,6 +1,6 @@
 #pragma once
 
-#include "game/state/equipment.h"
+#include "game/state/shared/equipment.h"
 #include "game/state/stateobject.h"
 #include "library/sp.h"
 #include "library/strings.h"
@@ -59,8 +59,8 @@ class VEquipment : public Equipment
 	// Reload uses up to 'ammoAvailable' to reload the weapon. It returns the amount
 	// actually used.
 	int reload(int ammoAvailable);
-	sp<Projectile> fire(GameState &state, Vec3<float> targetPosition,
-	                    StateRef<Vehicle> targetVehicle = nullptr);
+	void fire(GameState &state, Vec3<float> targetPosition,
+	          StateRef<Vehicle> targetVehicle = nullptr, bool manual = false);
 
 	sp<Image> getEquipmentArmorImage() const override;
 	sp<Image> getEquipmentImage() const override;

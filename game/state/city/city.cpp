@@ -3,23 +3,25 @@
 #include "framework/sound.h"
 #include "framework/trace.h"
 #include "game/state/city/building.h"
-#include "game/state/city/doodad.h"
-#include "game/state/city/projectile.h"
 #include "game/state/city/scenery.h"
 #include "game/state/city/vehicle.h"
 #include "game/state/city/vehiclemission.h"
 #include "game/state/city/vequipment.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/doodad_type.h"
-#include "game/state/rules/scenery_tile_type.h"
-#include "game/state/rules/vequipment_type.h"
-#include "game/state/tileview/collision.h"
-#include "game/state/tileview/tile.h"
-#include "game/state/tileview/tileobject_projectile.h"
-#include "game/state/tileview/tileobject_scenery.h"
-#include "game/state/tileview/tileobject_vehicle.h"
+#include "game/state/rules/city/citycommonimagelist.h"
+#include "game/state/rules/city/scenerytiletype.h"
+#include "game/state/rules/city/vequipmenttype.h"
+#include "game/state/rules/doodadtype.h"
+#include "game/state/shared/doodad.h"
+#include "game/state/shared/projectile.h"
+#include "game/state/tilemap/collision.h"
+#include "game/state/tilemap/tilemap.h"
+#include "game/state/tilemap/tileobject_projectile.h"
+#include "game/state/tilemap/tileobject_scenery.h"
+#include "game/state/tilemap/tileobject_vehicle.h"
 #include <functional>
 #include <future>
+#include <glm/glm.hpp>
 #include <limits>
 
 namespace OpenApoc
@@ -50,22 +52,19 @@ City::~City()
 		if (s->tileObject)
 			s->tileObject->removeFromMap();
 		s->tileObject = nullptr;
+		s->city.clear();
+		s->building.clear();
 	}
-	// FIXME: Due to tiles possibly being cross-supported we need to clear that sp<> to avoid leaks
-	// Should this be pushed into a weak_ptr<> or some other ref?
-	for (auto &s : this->scenery)
-	{
-		s->supports.clear();
-		s->supportedBy.clear();
-	}
-
 	for (auto &b : this->buildings)
 	{
-		b.second->landed_vehicles.clear();
+		b.second->currentVehicles.clear();
+		b.second->currentAgents.clear();
+		b.second->city.clear();
+		b.second->base.clear();
 	}
 }
 
-void City::initMap()
+void City::initMap(GameState &state)
 {
 	if (this->map)
 	{
@@ -74,22 +73,39 @@ void City::initMap()
 	}
 	this->map.reset(new TileMap(this->size, VELOCITY_SCALE_CITY,
 	                            {VOXEL_X_CITY, VOXEL_Y_CITY, VOXEL_Z_CITY}, layerMap));
+	for (auto &b : this->buildings)
+	{
+		b.second->crewQuarters = {-1, -1, -1};
+	}
 	for (auto &s : this->scenery)
 	{
-		// FIXME: Should we really add all scenery to the map? What if it's destroyed?
-		this->map->addObjectToMap(s);
+		s->city = {&state, id};
+		if (!s->destroyed)
+		{
+			this->map->addObjectToMap(s);
+		}
+		if (!s->building)
+		{
+			continue;
+		}
 		if (s->type->isLandingPad)
 		{
-			Vec2<int> pos = {s->initialPosition.x, s->initialPosition.y};
-
-			for (auto &b : this->buildings)
+			s->building->landingPadLocations.push_back(s->initialPosition);
+		}
+		if ((s->type->connection[0] || s->type->connection[1] || s->type->connection[2] ||
+		     s->type->connection[3]) &&
+		    s->type->road_type == SceneryTileType::RoadType::Terminal)
+		{
+			s->building->carEntranceLocations.push_back(s->initialPosition);
+			// crew quarters is the closest to camera spot with vehicle access
+			if (s->initialPosition.z > s->building->crewQuarters.z ||
+			    (s->initialPosition.z == s->building->crewQuarters.z &&
+			     s->initialPosition.y > s->building->crewQuarters.y) ||
+			    (s->initialPosition.z == s->building->crewQuarters.z &&
+			     s->initialPosition.y == s->building->crewQuarters.y &&
+			     s->initialPosition.x > s->building->crewQuarters.x))
 			{
-				if (b.second->bounds.within(pos))
-				{
-					b.second->landingPadLocations.push_back(s->initialPosition);
-					LogInfo("Pad %s is within building %s bounds %s", pos, b.first,
-					        b.second->bounds);
-				}
+				s->building->crewQuarters = s->initialPosition;
 			}
 		}
 	}
@@ -101,11 +117,26 @@ void City::initMap()
 		}
 		LogInfo("Building %s has %u landing pads:", b.first,
 		        (unsigned)b.second->landingPadLocations.size());
-
 		for (auto &loc : b.second->landingPadLocations)
 		{
 			LogInfo("Pad: %s", loc);
 		}
+		for (auto &loc : b.second->carEntranceLocations)
+		{
+			LogInfo("Car: %s", loc);
+		}
+		if (b.second->crewQuarters == Vec3<int>{-1, -1, -1})
+		{
+			LogWarning("Building %s has no car exit?", b.first);
+			b.second->crewQuarters = {(b.second->bounds.p0.x + b.second->bounds.p1.x) / 2,
+			                          (b.second->bounds.p0.y + b.second->bounds.p1.y) / 2, 2};
+		}
+		LogInfo("Crew Quarters: %s", b.second->crewQuarters);
+		if (b.second->function.id == "BUILDINGFUNCTION_SPACE_PORT")
+		{
+			spaceports.emplace_back(&state, b.first);
+		}
+		b.second->owner->buildings.emplace_back(&state, b.first);
 	}
 	for (auto &p : this->projectiles)
 	{
@@ -121,6 +152,43 @@ void City::initMap()
 	}
 }
 
+int City::getSegmentID(const Vec3<int> &position) const
+{
+	return tileToRoadSegmentMap.at(position.z * map->size.x * map->size.y +
+	                               position.y * map->size.x + position.x);
+}
+
+const RoadSegment &City::getSegment(const Vec3<int> &position) const
+{
+	return roadSegments.at(tileToRoadSegmentMap.at(position.z * map->size.x * map->size.y +
+	                                               position.y * map->size.x + position.x));
+}
+
+void City::notifyRoadChange(const Vec3<int> &position, bool intact)
+{
+	auto segId = getSegmentID(position);
+	if (segId != -1)
+	{
+		roadSegments.at(segId).notifyRoadChange(position, intact);
+	}
+}
+
+void City::handleProjectileHit(GameState &state, sp<Projectile> projectile, bool displayDoodad,
+                               bool playSound)
+{
+	if (displayDoodad && projectile->doodadType)
+	{
+		placeDoodad(projectile->doodadType, projectile->position);
+	}
+
+	if (playSound && projectile->impactSfx)
+	{
+		fw().soundBackend->playSample(projectile->impactSfx, projectile->position);
+	}
+
+	projectiles.erase(projectile);
+}
+
 void City::update(GameState &state, unsigned int ticks)
 {
 	TRACE_FN_ARGS1("ticks", Strings::fromInteger(static_cast<int>(ticks)));
@@ -132,12 +200,12 @@ void City::update(GameState &state, unsigned int ticks)
 	// Need to use a 'safe' iterator method (IE keep the next it before calling ->update)
 	// as update() calls can erase it's object from the lists
 
-	Trace::start("City::update::buildings->landed_vehicles");
+	Trace::start("City::update::buildings->currentVehicles");
 	for (auto it = this->buildings.begin(); it != this->buildings.end();)
 	{
 		auto b = it->second;
 		it++;
-		for (auto v : b->landed_vehicles)
+		for (auto v : b->currentVehicles)
 		{
 			for (auto &e : v->equipment)
 			{
@@ -145,77 +213,59 @@ void City::update(GameState &state, unsigned int ticks)
 					continue;
 				e->reload(std::numeric_limits<int>::max());
 			}
-			if (v->owner == state.getPlayer())
-				continue;
-
-			if (v->missions.empty())
-			{
-				auto bldIt = this->buildings.begin();
-				auto count = bld_distribution(state.rng);
-				while (count--)
-					bldIt++;
-				StateRef<Building> dest = {&state, bldIt->first};
-				v->missions.emplace_back(VehicleMission::gotoBuilding(state, *v, dest));
-				v->missions.front()->start(state, *v);
-
-				// FIXME: Make snoozetime bounds/distribution readable from serialized GameState
-				std::uniform_int_distribution<unsigned int> snoozeTimeDist(10, 10000);
-				v->missions.emplace_back(
-				    VehicleMission::snooze(state, *v, snoozeTimeDist(state.rng)));
-			}
 		}
 	}
-	Trace::end("City::update::buildings->landed_vehicles");
+	Trace::end("City::update::buildings->currentVehicles");
 	Trace::start("City::update::projectiles->update");
 	for (auto it = this->projectiles.begin(); it != this->projectiles.end();)
 	{
 		auto p = *it++;
+		// Projectile can die here
 		p->update(state, ticks);
 	}
-	for (auto it = this->projectiles.begin(); it != this->projectiles.end();)
+	// Since projectiles can kill projectiles just kill everyone in the end
+	std::set<std::tuple<sp<Projectile>, bool, bool>> deadProjectiles;
+	for (auto &p : projectiles)
 	{
-		auto &p = *it++;
 		auto c = p->checkProjectileCollision(*map);
 		if (c)
 		{
-			// FIXME: Handle collision
-			this->projectiles.erase(c.projectile);
-			if (c.projectile->impactSfx)
-			{
-				fw().soundBackend->playSample(c.projectile->impactSfx, c.position);
-			}
-
-			auto doodadType = c.projectile->doodadType;
-			if (doodadType)
-			{
-				auto doodad = this->placeDoodad(doodadType, c.position);
-			}
-
+			bool displayDoodad = true;
+			bool playSound = true;
 			switch (c.obj->getType())
 			{
 				case TileObject::Type::Vehicle:
 				{
 					auto vehicle = std::static_pointer_cast<TileObjectVehicle>(c.obj)->getVehicle();
-					vehicle->handleCollision(state, c);
-					LogWarning("Vehicle collision");
+					displayDoodad = !vehicle->handleCollision(state, c, playSound);
 					break;
 				}
 				case TileObject::Type::Scenery:
 				{
 					auto sceneryTile = std::static_pointer_cast<TileObjectScenery>(c.obj);
-					// FIXME: Don't just explode scenery, but damaged tiles/falling stuff? Different
-					// explosion doodads? Not all weapons instantly destory buildings too
-
-					auto doodad =
-					    this->placeDoodad({&state, "DOODAD_3_EXPLOSION"}, sceneryTile->getCenter());
-					sceneryTile->getOwner()->handleCollision(state, c);
+					displayDoodad = !sceneryTile->getOwner()->handleCollision(state, c);
+					playSound = displayDoodad;
+					break;
+				}
+				case TileObject::Type::Projectile:
+				{
+					deadProjectiles.emplace(
+					    std::static_pointer_cast<TileObjectProjectile>(c.obj)->getProjectile(),
+					    true, true);
 					break;
 				}
 				default:
 					LogError("Collision with non-collidable object");
 			}
+			deadProjectiles.emplace(c.projectile->shared_from_this(), displayDoodad, playSound);
 		}
 	}
+	// Kill projectiles that collided
+	for (auto &p : deadProjectiles)
+	{
+		std::get<0>(p)->die(state, std::get<1>(p), std::get<2>(p));
+	}
+
 	Trace::end("City::update::projectiles->update");
 	Trace::start("City::update::scenery->update");
 	for (auto &s : this->scenery)
@@ -249,30 +299,46 @@ void City::dailyLoop(GameState &state)
 
 void City::generatePortals(GameState &state)
 {
-	static const int iterLimit = 1000;
-	for (auto &p : portals)
+	if (portals.empty())
 	{
-		p->remove(state);
-	}
-	this->portals.clear();
+		// FIXME: Implement proper portals
+		// According to skin36, portals must have empty 4x4x4 around them
+		// and spawn within 100x100 around city center
 
-	std::uniform_int_distribution<int> xyPos(10, 130);
-	std::uniform_int_distribution<int> zPos(2, 8);
-	for (int p = 0; p < 3; p++)
-	{
-		for (int i = 0; i < iterLimit; i++)
+		// FIXME: Implement portals in alien city staying where they are
+		// and starting where they should
+
+		static const int iterLimit = 1000;
+		for (auto &p : portals)
 		{
-			Vec3<float> pos(xyPos(state.rng), xyPos(state.rng), zPos(state.rng));
+			p->remove(state);
+		}
+		this->portals.clear();
 
-			if (map->tileIsValid(pos) && map->getTile(pos)->ownedObjects.empty())
+		std::uniform_int_distribution<int> xyPos(20, 120);
+		std::uniform_int_distribution<int> zPos(2, 8);
+		for (int p = 0; p < 3; p++)
+		{
+			for (int i = 0; i < iterLimit; i++)
 			{
-				auto doodad =
-				    mksp<Doodad>(pos, StateRef<DoodadType>{&state, "DOODAD_6_DIMENSION_GATE"});
-				map->addObjectToMap(doodad);
-				this->portals.push_back(doodad);
-				break;
+				Vec3<float> pos(xyPos(state.rng), xyPos(state.rng), zPos(state.rng));
+
+				if (map->tileIsValid(pos) && map->getTile(pos)->ownedObjects.empty())
+				{
+					auto doodad =
+					    mksp<Doodad>(pos, StateRef<DoodadType>{&state, "DOODAD_6_DIMENSION_GATE"});
+					map->addObjectToMap(doodad);
+					this->portals.push_back(doodad);
+					break;
+				}
 			}
 		}
+	}
+	else
+	{
+		// FIXME: Implement moving portals
+		// According to skin36, portal is moved by +-(2*week + 15) on each coordinate
+		// and must stay within -5..105 which means within 15 from map border in our coords
 	}
 }
 
@@ -284,12 +350,127 @@ void City::updateInfiltration(GameState &state)
 	}
 }
 
+void City::initialSceneryLinkUp()
+{
+	LogWarning("Begun scenery link up!");
+	auto &mapref = *map;
+
+	for (auto &s : this->scenery)
+	{
+		if (!s->destroyed)
+		{
+			s->queueCollapse();
+		}
+	}
+
+	for (int z = 0; z < mapref.size.z; z++)
+	{
+		for (auto &s : this->scenery)
+		{
+			if ((int)s->currentPosition.z == z && !s->destroyed && s->findSupport())
+			{
+				s->cancelCollapse();
+			}
+		}
+	}
+	LogWarning("Begun scenery link up cycle!");
+	bool foundSupport;
+	// Establish support based on existing supported map parts
+	do
+	{
+		foundSupport = false;
+		for (auto &s : this->scenery)
+		{
+			if (!s->willCollapse())
+			{
+				continue;
+			}
+			if (s->findSupport())
+			{
+				s->cancelCollapse();
+				foundSupport = true;
+			}
+		}
+	} while (foundSupport);
+
+	//// Report unlinked parts
+	// for (auto &mp : this->scenery)
+	//{
+	//	if (mp->willCollapse())
+	//	{
+	//		auto pos = mp->tileObject->getOwningTile()->position;
+	//		LogWarning("SC %s at %s is UNLINKED", mp->type.id, pos);
+	//	}
+	//}
+
+	// Report unlinked parts
+	for (auto &mp : this->scenery)
+	{
+		if (mp->willCollapse())
+		{
+			auto pos = mp->tileObject->getOwningTile()->position;
+			LogWarning("SC %s at %s is going to fall", mp->type.id, pos);
+		}
+	}
+
+	mapref.updateAllCityInfo();
+	LogWarning("Link up finished!");
+}
+
 sp<Doodad> City::placeDoodad(StateRef<DoodadType> type, Vec3<float> position)
 {
 	auto doodad = mksp<Doodad>(position, type);
 	map->addObjectToMap(doodad);
 	this->doodads.push_back(doodad);
 	return doodad;
+}
+
+sp<Vehicle> City::placeVehicle(GameState &state, StateRef<VehicleType> type,
+                               StateRef<Organisation> owner)
+{
+	auto v = mksp<Vehicle>();
+	v->type = type;
+	v->name = format("%s %d", type->name, ++type->numCreated);
+	v->city = {&state, id};
+	v->owner = owner;
+	v->health = type->health;
+	v->strategyImages = state.city_common_image_list->strategyImages;
+	v->owner = owner;
+	v->setupMover();
+
+	// Vehicle::equipDefaultEquipment uses the state reference from itself, so make sure the
+	// vehicle table has the entry before calling it
+	UString vID = Vehicle::generateObjectID(state);
+	state.vehicles[vID] = v;
+
+	v->equipDefaultEquipment(state);
+
+	return v;
+}
+
+sp<Vehicle> City::placeVehicle(GameState &state, StateRef<VehicleType> type,
+                               StateRef<Organisation> owner, StateRef<Building> building)
+{
+	if (building->city.id != id)
+	{
+		LogError("Adding vehicle to a building in a different city?");
+		return nullptr;
+	}
+	auto v = placeVehicle(state, type, owner);
+
+	v->enterBuilding(state, building);
+
+	return v;
+}
+
+sp<Vehicle> City::placeVehicle(GameState &state, StateRef<VehicleType> type,
+                               StateRef<Organisation> owner, Vec3<float> position, float facing)
+{
+	auto v = placeVehicle(state, type, owner);
+
+	v->leaveBuilding(state, position, facing);
+
+	return v;
 }
 
 sp<City> City::get(const GameState &state, const UString &id)
@@ -331,27 +512,26 @@ const UString &City::getId(const GameState &state, const sp<City> ptr)
 void City::accuracyAlgorithmCity(GameState &state, Vec3<float> firePosition, Vec3<float> &target,
                                  int accuracy, bool cloaked)
 {
-	// FIXME: Prettify this code
-	int projx = firePosition.x;
-	int projy = firePosition.y;
-	int projz = firePosition.z;
-	int vehx = target.x;
-	int vehy = target.y;
-	int vehz = target.z;
-	int inverseAccuracy = 100 - accuracy;
+	float dispersion = 100 - accuracy;
 	// Introduce minimal dispersion?
-	inverseAccuracy = std::max(0, inverseAccuracy);
+	dispersion = std::max(0.0f, dispersion);
 
-	float delta_x = (float)(vehx - projx) * inverseAccuracy / 1000.0f;
-	float delta_y = (float)(vehy - projy) * inverseAccuracy / 1000.0f;
-	float delta_z = (float)(vehz - projz) * inverseAccuracy / 1000.0f;
-	if (delta_x == 0.0f && delta_y == 0.0f && delta_z == 0.0f)
+	if (cloaked)
+	{
+		dispersion *= dispersion;
+		float cloakDispersion = 2000.0f / (glm::length(firePosition - target) + 3.0f);
+		dispersion += cloakDispersion * cloakDispersion;
+		dispersion = sqrtf(dispersion);
+	}
+
+	auto delta = (target - firePosition) * dispersion / 1000.0f;
+	if (delta.x == 0.0f && delta.y == 0.0f && delta.z == 0.0f)
 	{
 		return;
 	}
 
 	float length_vector =
-	    1.0f / std::sqrt(delta_x * delta_x + delta_y * delta_y + delta_z * delta_z);
+	    1.0f / std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
 
 	std::vector<float> rnd(3);
 	while (true)
@@ -365,30 +545,62 @@ void City::accuracyAlgorithmCity(GameState &state, Vec3<float> firePosition, Vec
 		}
 	}
 
-	// Misses can go both ways on the axis
 	float k1 = (2 * randBoundsInclusive(state.rng, 0, 1) - 1) * rnd[1] *
 	           std::sqrt(-2 * std::log(rnd[0]) / rnd[0]);
 	float k2 = (2 * randBoundsInclusive(state.rng, 0, 1) - 1) * rnd[2] *
 	           std::sqrt(-2 * std::log(rnd[0]) / rnd[0]);
 
-	float x1 = length_vector * delta_x * delta_z * k1;
-	float y1 = length_vector * delta_y * delta_z * k1;
-	float z1 = -length_vector * (delta_x * delta_x + delta_y * delta_y) * k1;
+	// Misses can go both ways on the axis
+	auto diffVertical =
+	    Vec3<float>{length_vector * delta.x * delta.z, length_vector * delta.y * delta.z,
+	                -length_vector * (delta.x * delta.x + delta.y * delta.y)} *
+	    k1;
+	auto diffHorizontal = Vec3<float>{-delta.y, delta.x, 0.0f} * k2;
+	auto diff = (diffVertical + diffHorizontal) * Vec3<float>{1.0f, 1.0f, 0.33f};
 
-	float x2 = -delta_y * k2;
-	float y2 = delta_x * k2;
-	float z2 = 0;
+	target += diff;
+}
 
-	float x3 = (x1 + x2);
-	float y3 = (y1 + y2);
-	float z3 = ((z1 + z2) / 3.0f);
-	x3 = x3 < 0 ? ceilf(x3) : floorf(x3);
-	y3 = y3 < 0 ? ceilf(y3) : floorf(y3);
-	z3 = z3 < 0 ? ceilf(z3) : floorf(z3);
+void RoadSegment::notifyRoadChange(const Vec3<int> &position, bool intact)
+{
+	for (int i = 0; i < tilePosition.size(); i++)
+	{
+		if (tilePosition.at(i) == position)
+		{
+			tileIntact.at(i) = intact;
+			break;
+		}
+	}
+	intact = true;
+	for (int i = 0; i < tileIntact.size(); i++)
+	{
+		if (!tileIntact[i])
+		{
+			intact = false;
+			break;
+		}
+	}
+}
 
-	target.x += x3;
-	target.y += y3;
-	target.z += z3;
+void RoadSegment::finalizeStats()
+{
+	length = (int)tilePosition.size();
+	intact = true;
+	tileIntact.resize(length, true);
+	if (empty())
+	{
+		return;
+	}
+	middle = tilePosition.at(length / 2);
+}
+
+bool RoadSegment::empty() const { return tilePosition.empty(); }
+
+RoadSegment::RoadSegment(Vec3<int> tile) { tilePosition.emplace_back(tile); }
+
+RoadSegment::RoadSegment(Vec3<int> tile, int connection) : RoadSegment(tile)
+{
+	connections.emplace_back(connection);
 }
 
 } // namespace OpenApoc

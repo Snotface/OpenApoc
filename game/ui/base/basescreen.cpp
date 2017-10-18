@@ -3,7 +3,7 @@
 #include "forms/graphic.h"
 #include "forms/graphicbutton.h"
 #include "forms/label.h"
-#include "forms/list.h"
+#include "forms/listbox.h"
 #include "forms/textedit.h"
 #include "forms/ui.h"
 #include "framework/data.h"
@@ -12,15 +12,16 @@
 #include "framework/image.h"
 #include "framework/keycodes.h"
 #include "framework/renderer.h"
-#include "game/state/base/base.h"
-#include "game/state/base/facility.h"
+#include "game/state/city/base.h"
 #include "game/state/city/building.h"
+#include "game/state/city/facility.h"
 #include "game/state/gamestate.h"
-#include "game/state/ufopaedia.h"
-#include "game/ui/base/aequipscreen.h"
-#include "game/ui/base/basegraphics.h"
+#include "game/state/rules/city/ufopaedia.h"
 #include "game/ui/base/researchscreen.h"
+#include "game/ui/base/transactionscreen.h"
 #include "game/ui/base/vequipscreen.h"
+#include "game/ui/components/basegraphics.h"
+#include "game/ui/general/aequipscreen.h"
 #include "game/ui/general/messagebox.h"
 #include "game/ui/ufopaedia/ufopaediacategoryview.h"
 #include "library/strings_format.h"
@@ -89,6 +90,36 @@ void BaseScreen::begin()
 	form->findControlTyped<GraphicButton>("BUTTON_OK")
 	    ->addCallback(FormEventType::ButtonClick,
 	                  [](Event *) { fw().stageQueueCommand({StageCmd::Command::POP}); });
+	form->findControlTyped<GraphicButton>("BUTTON_BASE_BUYSELL")
+	    ->addCallback(FormEventType::ButtonClick, [this](Event *) {
+		    fw().stageQueueCommand(
+		        {StageCmd::Command::PUSH,
+		         mksp<TransactionScreen>(state, TransactionScreen::Mode::BuySell)});
+		});
+	form->findControlTyped<GraphicButton>("BUTTON_BASE_TRANSFER")
+	    ->addCallback(FormEventType::ButtonClick, [this](Event *) {
+		    if (this->state->player_bases.size() <= 1)
+		    {
+			    fw().stageQueueCommand(
+			        {StageCmd::Command::PUSH,
+			         mksp<MessageBox>(
+			             tr("Transfer"),
+			             tr("At least two bases are required before transfers become possible."),
+			             MessageBox::ButtonOptions::Ok)});
+		    }
+		    else
+		    {
+			    fw().stageQueueCommand(
+			        {StageCmd::Command::PUSH,
+			         mksp<TransactionScreen>(state, TransactionScreen::Mode::Transfer)});
+		    }
+		});
+	form->findControlTyped<GraphicButton>("BUTTON_BASE_ALIEN_CONTAINMENT")
+	    ->addCallback(FormEventType::ButtonClick, [this](Event *) {
+		    fw().stageQueueCommand(
+		        {StageCmd::Command::PUSH,
+		         mksp<TransactionScreen>(state, TransactionScreen::Mode::AlienContainment)});
+		});
 	form->findControlTyped<GraphicButton>("BUTTON_BASE_EQUIPAGENT")
 	    ->addCallback(FormEventType::ButtonClick, [this](Event *) {
 		    // FIXME: If you don't have any vehicles this button should do nothing
@@ -105,7 +136,7 @@ void BaseScreen::begin()
 		    fw().stageQueueCommand({StageCmd::Command::PUSH, mksp<ResearchScreen>(state)});
 		});
 	form->findControlTyped<TextEdit>("TEXT_BASE_NAME")
-	    ->addCallback(FormEventType::TextEditFinish, [this](Event *e) {
+	    ->addCallback(FormEventType::TextEditFinish, [this](FormsEvent *e) {
 		    this->state->current_base->name =
 		        std::dynamic_pointer_cast<TextEdit>(e->forms().RaisedBy)->getText();
 		});
@@ -126,6 +157,16 @@ void BaseScreen::eventOccurred(Event *e)
 		if (e->keyboard().KeyCode == SDLK_ESCAPE)
 		{
 			fw().stageQueueCommand({StageCmd::Command::POP});
+			return;
+		}
+		if (e->keyboard().KeyCode == SDLK_F10)
+		{
+			for (auto &facility : state->current_base->facilities)
+			{
+				{
+					facility->buildTime = 0;
+				}
+			}
 			return;
 		}
 	}
@@ -299,7 +340,8 @@ void BaseScreen::eventOccurred(Event *e)
 			{
 				if (selection != NO_SELECTION)
 				{
-					Base::BuildError error = state->current_base->canDestroyFacility(selection);
+					Base::BuildError error =
+					    state->current_base->canDestroyFacility(*state, selection);
 					switch (error)
 					{
 						case Base::BuildError::NoError:
@@ -356,7 +398,8 @@ void BaseScreen::eventOccurred(Event *e)
 			statsLabels[0]->setText(tr("Capacity"));
 			statsValues[0]->setText(format("%d", selFacility->type->capacityAmount));
 			statsLabels[1]->setText(tr("Usage"));
-			statsValues[1]->setText(format("%d%%", state->current_base->getUsage(selFacility)));
+			statsValues[1]->setText(
+			    format("%d%%", state->current_base->getUsage(*state, selFacility)));
 		}
 	}
 	else if (selection != NO_SELECTION)

@@ -2,20 +2,20 @@
 #include "framework/framework.h"
 #include "framework/logger.h"
 #include "framework/sound.h"
-#include "game/state/aequipment.h"
 #include "game/state/battle/battle.h"
-#include "game/state/battle/battlecommonsamplelist.h"
 #include "game/state/battle/battlemappart.h"
 #include "game/state/battle/battleunit.h"
 #include "game/state/gamestate.h"
-#include "game/state/rules/aequipment_type.h"
-#include "game/state/rules/damage.h"
-#include "game/state/tileview/collision.h"
-#include "game/state/tileview/tile.h"
-#include "game/state/tileview/tileobject_battleitem.h"
-#include "game/state/tileview/tileobject_battlemappart.h"
-#include "game/state/tileview/tileobject_battleunit.h"
-#include "game/state/tileview/tileobject_shadow.h"
+#include "game/state/rules/aequipmenttype.h"
+#include "game/state/rules/battle/battlecommonsamplelist.h"
+#include "game/state/rules/battle/damage.h"
+#include "game/state/shared/aequipment.h"
+#include "game/state/tilemap/collision.h"
+#include "game/state/tilemap/tilemap.h"
+#include "game/state/tilemap/tileobject_battleitem.h"
+#include "game/state/tilemap/tileobject_battlemappart.h"
+#include "game/state/tilemap/tileobject_battleunit.h"
+#include "game/state/tilemap/tileobject_shadow.h"
 #include <cmath>
 #include <glm/glm.hpp>
 
@@ -28,7 +28,8 @@ void BattleItem::die(GameState &state, bool violently)
 	{
 		item->explode(state);
 	}
-	if (item->ownerOrganisation && state.getPlayer() == item->ownerOrganisation)
+	// Lose score if item that dies and it's not a primed grenade
+	if (!item->primed && item->ownerOrganisation && item->ownerOrganisation == state.getPlayer())
 	{
 		state.current_battle->score.equipmentLost -= item->type->score;
 		if (item->payloadType)
@@ -53,7 +54,7 @@ void BattleItem::hopTo(GameState &state, Vec3<float> targetPosition)
 	// It was observed that boomeroids hop 1 to 4 tiles away (never overshooting)
 	int distance =
 	    std::min(16.0f, BattleUnitTileHelper::getDistanceStatic(position, targetPosition)) / 4.0f;
-	distance = randBoundsInclusive(state.rng, 1, distance);
+	distance = distance > 1 ? randBoundsInclusive(state.rng, 1, distance) : distance;
 	auto targetVector = targetPosition - position;
 	float velXY = 0.0f;
 	float velZ = 0.0f;
